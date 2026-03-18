@@ -1,6 +1,11 @@
-FROM ubuntu:24.04 as base
+FROM ubuntu:24.04 AS base
+
+ADD ./scripts/* /mumble/scripts/
+WORKDIR /mumble/scripts
 
 ARG DEBIAN_FRONTEND=noninteractive
+ARG MUMBLE_VERSION=latest
+
 RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
   && apt-get update && apt-get install --no-install-recommends -y \
   ca-certificates \
@@ -23,12 +28,16 @@ RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/s
   '^libpocoxml[0-9]+t?64?$' \
   '^libpoconet[0-9]+t?64?$' \
   && apt-get clean \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /data
 
 
 
 FROM base AS build
 ARG DEBIAN_FRONTEND=noninteractive
+
+ADD ./scripts/* /mumble/scripts/
+WORKDIR /mumble/repo
 
 RUN apt-get update && apt-get install --no-install-recommends -y \
   build-essential \
@@ -59,9 +68,6 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-COPY ./scripts/* /mumble/scripts/
-WORKDIR /mumble/repo
-
 ARG MUMBLE_VERSION=latest
 ARG MUMBLE_BUILD_NUMBER=""
 ARG MUMBLE_CMAKE_ARGS=""
@@ -73,25 +79,22 @@ RUN /mumble/scripts/clone.sh
 RUN /mumble/scripts/build.sh
 RUN /mumble/scripts/copy_one_of.sh ./scripts/murmur.ini ./auxiliary_files/mumble-server.ini default_config.ini
 
+RUN git clone https://github.com/ncopa/su-exec.git /mumble/repo/su-exec \
+    && cd /mumble/repo/su-exec && make
+
 
 
 FROM base
-ARG MUMBLE_UID=1000
-ARG MUMBLE_GID=1000
-RUN getent group $MUMBLE_GID && groupdel $(getent group $MUMBLE_GID | cut -d: -f1) || true \
-  && getent passwd $MUMBLE_UID && userdel $(getent passwd $MUMBLE_UID | cut -d: -f1) || true \
-  && groupadd --gid $MUMBLE_GID mumble \
-  && useradd --uid $MUMBLE_UID --gid $MUMBLE_GID mumble
 
 COPY --from=build /mumble/repo/build/mumble-server /usr/bin/mumble-server
 COPY --from=build /mumble/repo/default_config.ini /etc/mumble/bare_config.ini
+COPY --from=build --chmod=755 /mumble/repo/su-exec/su-exec /usr/local/bin/su-exec
 
-RUN mkdir -p /data && chown -R mumble:mumble /data && chown -R mumble:mumble /etc/mumble
-USER mumble
+
 EXPOSE 64738/tcp 64738/udp
 COPY entrypoint.sh /entrypoint.sh
 
 VOLUME ["/data"]
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["/usr/bin/mumble-server", "--foreground"]
+CMD ["/usr/bin/mumble-server"]
 
