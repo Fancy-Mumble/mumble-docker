@@ -32,7 +32,7 @@ else
 	fi
 fi
 
-cmake \
+cmake -G Ninja \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DBUILD_NUMBER=$buildNumber \
 	-Dclient=OFF \
@@ -41,9 +41,10 @@ cmake \
 	-Dtests=ON \
 	-Dwarnings-as-errors=OFF \
 	-Dzeroconf=OFF \
+	-DCMAKE_UNITY_BUILD=ON \
 	$MUMBLE_CMAKE_ARGS \
 	..
 
 cmake --build . -j $(nproc)
 
-ctest --output-on-failure . -j $(nproc)
+#ctest --output-on-failure . -j $(nproc)

@@ -145,7 +145,7 @@ fi
 [[ "$MUMBLE_VERBOSE" = true ]] && server_invocation+=( "-v" )
 
 # Make sure the correct configuration file is used
-server_invocation+=( "-ini" "${CONFIG_FILE}")
+server_invocation+=( "--ini" "${CONFIG_FILE}")
 
 if [[ -f /run/secrets/MUMBLE_SUPERUSER_PASSWORD ]]; then
 	MUMBLE_SUPERUSER_PASSWORD="$(cat /run/secrets/MUMBLE_SUPERUSER_PASSWORD)"
@@ -154,7 +154,7 @@ fi
 
 if [[ -n "${MUMBLE_SUPERUSER_PASSWORD}" ]]; then
 	#Variable to change the superuser password
-    "${server_invocation[@]}" -supw "$MUMBLE_SUPERUSER_PASSWORD"
+    "${server_invocation[@]}" --set-su-pw "$MUMBLE_SUPERUSER_PASSWORD"
     echo "Successfully configured superuser password"
 fi
 
