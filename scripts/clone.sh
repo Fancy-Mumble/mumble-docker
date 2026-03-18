@@ -3,7 +3,7 @@
 set -e
 set -x
 
-git clone --filter=tree:0 https://github.com/mumble-voip/mumble/ /mumble/repo
+git clone --branch 1.6.x --filter=tree:0 https://github.com/SetZero/mumble-server /mumble/repo
 
 cd /mumble/repo
 
