@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+export PUID=${PUID:-10000}
+export PGID=${PGID:-10000}
+MUMBLE_CHOWN_DATA=${MUMBLE_CHOWN_DATA:-true}
+
 readonly DATA_DIR="/data"
 readonly BARE_BONES_CONFIG_FILE="/etc/mumble/bare_config.ini"
 readonly CONFIG_REGEX="^(\;|\#)?\ *([a-zA-Z_0-9]+)=.*"
@@ -21,6 +25,54 @@ readarray -t existing_config_options < <(sed -En "s/$CONFIG_REGEX/\2/p" "$BARE_B
 # Grab the original command line that is supposed to start the Mumble server
 declare -a server_invocation=("${@}")
 declare -a used_configs
+
+server_version="$( "${server_invocation[@]}" --version | grep -o "[[:digit:]]\+\.[[:digit:]]\+\.[[:digit:]]\+" )"
+if [[ -z "$server_version" ]]; then
+	>&2 echo "Failed at obtaining/parsing server version"
+	exit 1
+fi
+
+echo "Using Mumble server version ${server_version}"
+
+# https://stackoverflow.com/a/5257398
+version_components=( ${server_version//./ } )
+if [[ ${#version_components[@]} -ne 3 ]]; then
+	>&2 echo "Server version doesn't have the expected number of components"
+fi
+
+if [[ ${version_components[0]} -gt 1 ]] || [[ ${version_components[1]} -gt 5 ]]; then
+	use_legacy_cli_args=false
+else
+	use_legacy_cli_args=true
+fi
+
+normalize_cli_arg() {
+	local arg="$1"
+
+	# CLI argument names have changed in 1.6, so if we're using an earlier version
+	# we have to back-translate the argument names for things to work out
+	if [[ "$use_legacy_cli_args" = "true" ]]; then
+		case "$arg" in
+			"--foreground")
+				arg="-fg"
+				;;
+			"--verbose")
+				arg="-v"
+				;;
+			"--ini")
+				arg="-ini"
+				;;
+			"--set-su-pw")
+				arg="-supw"
+				;;
+		esac
+	fi
+
+	echo "$arg"
+}
+
+# To keep the server from detaching
+server_invocation+=( "$( normalize_cli_arg "--foreground" )" )
 
 normalize_name() {
 	local uppercase="${1^^}"
@@ -64,8 +116,8 @@ set_config() {
 
 # Drop the user into a shell, if they so wish
 if [[ "$1" = "bash" ||  "$1" = "sh" ]]; then
-    echo "Dropping into interactive BASH session"
-    exec "${@}"
+	echo "Dropping into interactive BASH session"
+	exec "${@}"
 fi
 
 if [[ -f "$MUMBLE_CUSTOM_CONFIG_FILE" ]]; then
@@ -112,7 +164,7 @@ else
 		else
 			set_config "$config_option" "$(cat $secret_file)"
 		fi
-	done < <( ls /run/secrets | sed -n 's/^MUMBLE_CONFIG_//p' )
+	done < <( ls /run/secrets 2> /dev/null | sed -n 's/^MUMBLE_CONFIG_//p' )
 
 	# Apply default settings if they're missing
 
@@ -142,28 +194,40 @@ fi
 
 # Additional environment variables
 
-[[ "$MUMBLE_VERBOSE" = true ]] && server_invocation+=( "-v" )
+[[ "$MUMBLE_VERBOSE" = true ]] && server_invocation+=( "$( normalize_cli_arg "--verbose" )" )
 
 # Make sure the correct configuration file is used
-server_invocation+=( "--ini" "${CONFIG_FILE}")
+server_invocation+=( "$( normalize_cli_arg "--ini" )" "${CONFIG_FILE}")
 
 if [[ -f /run/secrets/MUMBLE_SUPERUSER_PASSWORD ]]; then
 	MUMBLE_SUPERUSER_PASSWORD="$(cat /run/secrets/MUMBLE_SUPERUSER_PASSWORD)"
-    echo "Read superuser password from container secret"
+	echo "Read superuser password from container secret"
 fi
 
 if [[ -n "${MUMBLE_SUPERUSER_PASSWORD}" ]]; then
 	#Variable to change the superuser password
-    "${server_invocation[@]}" --set-su-pw "$MUMBLE_SUPERUSER_PASSWORD"
-    echo "Successfully configured superuser password"
+	"${server_invocation[@]}" "$( normalize_cli_arg "--set-su-pw" )" "$MUMBLE_SUPERUSER_PASSWORD"
+	echo "Successfully configured superuser password"
+fi
+
+# Set privileges for /app but only if pid 1 user is root and we are dropping privileges.
+# If container is run as an unprivileged user, it means owner already handled ownership setup on their own.
+# Running chown in that case (as non-root) will cause error
+if [[ "$(id -u)" = "0" ]] && [[ "${PUID}" != "0" ]] && [[ "${MUMBLE_CHOWN_DATA}" = true ]]; then
+	chown -R ${PUID}:${PGID} /data
 fi
 
 # Show /data permissions, in case the user needs to match the mount point access
-echo "Running Mumble server as uid=$(id -u) gid=$(id -g)"
+echo "Running Mumble server as uid=${PUID} gid=${PGID}"
 echo "\"${DATA_DIR}\" has the following permissions set:"
 echo "  $( stat ${DATA_DIR} --printf='%A, owner: \"%U\" (UID: %u), group: \"%G\" (GID: %g)' )"
 
 echo "Command run to start the service : ${server_invocation[*]}"
 echo "Starting..."
 
-exec "${server_invocation[@]}"
+# Drop privileges (when asked to) if root, otherwise run as current user
+if [[ "$(id -u)" = "0" ]] && [[ "${PUID}" != "0" ]]; then
+	exec su-exec ${PUID}:${PGID} "${server_invocation[@]}"
+else
+	exec "${server_invocation[@]}"
+fi

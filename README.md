@@ -1,11 +1,16 @@
 # Mumble Docker
 
+![Docker Image Version](https://img.shields.io/docker/v/mumblevoip/mumble-server)
+![Docker Pulls](https://img.shields.io/docker/pulls/mumblevoip/mumble-server)
+![Docker Image Size](https://img.shields.io/docker/image-size/mumblevoip/mumble-server)
+
+
 Mumble is a free, open source, low latency, high quality voice chat application.
 
 <p align="center"><b><a href="https://mumble.info">Mumble Website</a> • <a href="https://github.com/mumble-voip/mumble">Mumble Source</a></b></p>
 
 This is the official code of the Mumble Docker image for self-hosting the **Mumble server**. The image is available for download on
-**[Dockerhub](https://hub.docker.com/r/mumblevoip/mumble-server)**.
+**[Dockerhub](https://hub.docker.com/r/mumblevoip/mumble-server)** and the **[GHCR](https://github.com/mumble-voip/mumble-docker/pkgs/container/mumble-server)**.
 
 -----
 
@@ -13,7 +18,8 @@ This is the official code of the Mumble Docker image for self-hosting the **Mumb
 
 1. [Running the container](#running-the-container)
 2. [Configuration](#configuration)
-3. [Building the container](#Building-the-container)
+3. [Building the container](#building-the-container)
+4. [More docs and usage examples in the Wiki](https://github.com/mumble-voip/mumble-docker/wiki)
 
 
 ## Running the container
@@ -25,7 +31,7 @@ Docker container using [docker-compose](https://docs.docker.com/compose/). Thus,
 
 In order for Mumble to store permanent data (most notably the database file (by default Mumble uses SQLite)), the image will use a
 [volume](https://docs.docker.com/storage/volumes/) which is mapped to the `/data/` path inside the image. By default the image uses a user with UID
-`1000` and GID of also `1000` but either can be adapted when building the image yourself (see below). You will have to make sure that all file
+`10000` and GID of also `10000` but either can be adapted when building the image yourself (see below). You will have to make sure that all file
 permissions are set up accordingly.
 
 ### Running the container
@@ -86,6 +92,20 @@ You can specify these environment variables when starting the container using th
 $ docker run -e "MUMBLE_CONFIG_SERVER_PASSWORD=123"
 ```
 
+You can specify these environment varibles in docker-compose using the `environment` attribute as documented [here](https://docs.docker.com/compose/how-tos/environment-variables/set-environment-variables/):
+```yaml
+services:
+    mumble-server:
+        environment:
+            MUMBLE_CONFIG_USERS: 100
+            MUMBLE_CONFIG_SENDVERSION: false
+            MUMBLE_CONFIG_WELCOMETEXT: 'Hello World'
+
+            # For MUMBLE_CONFIG_ string values with special
+            # characters (e.g. comma), wrap the value in quotes
+            MUMBLE_CONFIG_USERNAME: '"^[-_a-z0-9]{3,15}$"'
+```
+
 As an alternative to environment variables, docker or podman secrets can be used to read configuration options from files which follow the `MUMBLE_CONFIG_<config_name>` name pattern and are located in the `/run/secrets` directory at runtime. The same rules to naming environment variables apply to these files as well.
 
 Please consult the documentation of docker or podman on how to use secrets for further details.
@@ -121,6 +141,7 @@ The following _additional_ variables can be set for further server configuration
 | Environment Variable             | Description                                                                                                                                  |
 |----------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------- |
 | `MUMBLE_ACCEPT_UNKNOWN_SETTINGS` | Set to `true` to force the container to accept unknown settings passed as a `MUMBLE_CONFIG_` variable (see note below).                      |
+| `MUMBLE_CHOWN_DATA`              | Set to `false` to skip taking ownership of `/data` and its contents.                                                                         |
 | `MUMBLE_CUSTOM_CONFIG_FILE`      | Specify a custom config file path - **all `MUMBLE_CONFIG_` variables are IGNORED** <br/>(it's best to use a path inside the volume `/data/`) |
 | `MUMBLE_SUPERUSER_PASSWORD`      | Specifies the SuperUser (Admin) password for this server. If this is not given, a random password will be generated upon first startup.      |
 | `MUMBLE_VERBOSE`                 | Set to `true` to enable verbose logging in the server                                                                                        |
@@ -159,9 +180,9 @@ process employed by this Docker image.
 
 ### Using a different UID/GID
 
-Additionally, it is possible to specify the UID and the GID of the `mumble` user that is used inside the container. These can be controlled by the
-`MUMBLE_UID` and `MUMBLE_GID` build variables respectively. This is intended to allow you to use the same UID and GID as your user on your host
-system, in order to cause minimal issues when accessing mounted volumes.
+You can use Docker-standard `PUID` and `PGID` environment variables to set the UID and GID you wish mumble-server to run as and who will own the 
+files in `/data`. The default is UID:GID 10000:10000. Unless the environment variable `MUMBLE_CHOWN_DATA` is set to `false` the container will 
+take ownership of `/data` and any of its contents at container launch.
 
 ### Using custom build options
 
