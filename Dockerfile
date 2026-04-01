@@ -27,6 +27,9 @@ RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/s
   '^libpocojson[0-9]+t?64?$' \
   '^libpocoxml[0-9]+t?64?$' \
   '^libpoconet[0-9]+t?64?$' \
+  '^libpoconetssl[0-9]+t?64?$' \
+  '^libpococrypto[0-9]+t?64?$' \
+  '^libpocojwt[0-9]+t?64?$' \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /data
@@ -75,6 +78,9 @@ ARG MUMBLE_CMAKE_ARGS=""
 # Clone the repo, build it and finally copy the default server ini file. Since this file may be at different locations and Docker
 # doesn't support conditional copies, we have to ensure that regardless of where the file is located in the repo, it will end
 # up at a unique path in our build container to be copied further down.
+# Fetch the branch ref from GitHub so Docker invalidates the cache when the
+# remote branch advances (avoids stale clones without --no-cache).
+ADD https://api.github.com/repos/SetZero/mumble-server/git/refs/heads/1.6.x /tmp/git-version.json
 RUN /mumble/scripts/clone.sh
 RUN /mumble/scripts/build.sh
 RUN /mumble/scripts/copy_one_of.sh ./scripts/murmur.ini ./auxiliary_files/mumble-server.ini default_config.ini
@@ -87,6 +93,8 @@ RUN git clone https://github.com/ncopa/su-exec.git /mumble/repo/su-exec \
 FROM base
 
 COPY --from=build /mumble/repo/build/mumble-server /usr/bin/mumble-server
+# FCM push module (optional - glob avoids failure if not built)
+COPY --from=build /mumble/repo/build/src/murmur/fcm/libmumble_push_fcm.so* /usr/bin/
 COPY --from=build /mumble/repo/default_config.ini /etc/mumble/bare_config.ini
 COPY --from=build --chmod=755 /mumble/repo/su-exec/su-exec /usr/local/bin/su-exec
 

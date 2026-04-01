@@ -1,0 +1,1 @@
+docker buildx build --platform linux/arm64,linux/amd64 -t unstabletypes/mumble-server:custom-e2e-0.2.11 . --push

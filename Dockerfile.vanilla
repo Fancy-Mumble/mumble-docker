@@ -1,0 +1,88 @@
+FROM ubuntu:24.04 AS base
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
+  && apt-get update && apt-get install --no-install-recommends -y \
+  ca-certificates \
+  libcap2 \
+  libqt6core6t64 \
+  libqt6dbus6t64 \
+  libqt6network6t64 \
+  libqt6sql6t64 \
+  libqt6sql6-sqlite \
+  libqt6xml6t64 \
+  '^libprotobuf[0-9]+t?64?$' \
+  libsqlite3-0 \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /data
+
+
+FROM base AS build
+
+ARG DEBIAN_FRONTEND=noninteractive
+WORKDIR /mumble/repo
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  build-essential \
+  ca-certificates \
+  cmake \
+  ninja-build \
+  git \
+  libboost-dev \
+  libcap-dev \
+  libprotoc-dev \
+  libprotobuf-dev \
+  libssl-dev \
+  libsqlite3-dev \
+  pkg-config \
+  protobuf-compiler \
+  python3 \
+  qt6-base-dev \
+  qt6-tools-dev \
+  qt6-tools-dev-tools \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --branch 1.6.x --depth 1 https://github.com/mumble-voip/mumble.git /mumble/repo \
+  && cd /mumble/repo \
+  && git submodule update --init --depth 1
+
+RUN mkdir build && cd build \
+  && cmake -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_NUMBER=0 \
+    -Dclient=OFF \
+    -Dserver=ON \
+    -Dice=OFF \
+    -Dtests=OFF \
+    -Dwarnings-as-errors=OFF \
+    -Dzeroconf=OFF \
+    -Dplugins=OFF \
+    -Denable-mysql=OFF \
+    -Denable-postgresql=OFF \
+    -DCMAKE_UNITY_BUILD=ON \
+    .. \
+  && cmake --build . -j $(nproc)
+
+# Copy the default config template (location varies between versions)
+RUN cp -f auxiliary_files/mumble-server.ini /mumble/default_config.ini 2>/dev/null \
+  || cp -f scripts/murmur.ini /mumble/default_config.ini
+
+RUN git clone --depth 1 https://github.com/ncopa/su-exec.git /mumble/su-exec \
+  && cd /mumble/su-exec && make
+
+
+FROM base
+
+COPY --from=build /mumble/repo/build/mumble-server /usr/bin/mumble-server
+COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
+COPY --from=build --chmod=755 /mumble/su-exec/su-exec /usr/local/bin/su-exec
+
+EXPOSE 64738/tcp 64738/udp
+COPY entrypoint.sh /entrypoint.sh
+
+VOLUME ["/data"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/bin/mumble-server"]
