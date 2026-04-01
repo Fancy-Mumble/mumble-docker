@@ -1,0 +1,131 @@
+# syntax=docker/dockerfile:1
+# Dev Dockerfile: uses local source + BuildKit cache for fast incremental rebuilds.
+# Usage:
+#   docker buildx build -f Dockerfile.dev -t mumble-server:dev \
+#     --build-context mumble-src=F:\Dokumente\projekte\mumble_server\mumble-server .
+#
+# Requires DOCKER_BUILDKIT=1 (default in modern Docker).
+
+FROM ubuntu:24.04 AS base
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
+  && apt-get update && apt-get install --no-install-recommends -y \
+  ca-certificates \
+  libavahi-compat-libdnssd1 \
+  libcap2 \
+  libqt6core6t64 \
+  libqt6dbus6t64 \
+  libqt6network6t64 \
+  libqt6sql6t64 \
+  libqt6sql6-sqlite \
+  libqt6xml6t64 \
+  libzeroc-ice3.7t64 \
+  '^libprotobuf[0-9]+t?64?$' \
+  libsqlite3-0 \
+  '^libmysqlclient[0-9]+$' \
+  libpq5 \
+  '^libpocofoundation[0-9]+t?64?$' \
+  '^libpocodata[0-9]+t?64?$' \
+  '^libpocojson[0-9]+t?64?$' \
+  '^libpocoxml[0-9]+t?64?$' \
+  '^libpoconet[0-9]+t?64?$' \
+  '^libpoconetssl[0-9]+t?64?$' \
+  '^libpococrypto[0-9]+t?64?$' \
+  '^libpocojwt[0-9]+t?64?$' \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+
+FROM base AS build
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  build-essential \
+  ca-certificates \
+  cmake \
+  ninja-build \
+  gdb \
+  git \
+  libavahi-compat-libdnssd-dev \
+  libboost-dev \
+  libcap-dev \
+  libprotoc-dev \
+  libprotobuf-dev \
+  libssl-dev \
+  libxi-dev \
+  libzeroc-ice-dev \
+  libsqlite3-dev \
+  libmysqlclient-dev \
+  libpq-dev \
+  libpoco-dev \
+  pkg-config \
+  protobuf-compiler \
+  python3 \
+  qt6-base-dev \
+  qt6-tools-dev \
+  qt6-tools-dev-tools \
+  qt6-svg-dev \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+# Copy local source instead of cloning from GitHub.
+# Use --from=mumble-src (a named build context pointing to the local repo).
+COPY --from=mumble-src . /mumble/repo
+WORKDIR /mumble/repo
+
+# Initialize submodules (needed for 3rdparty deps).
+# Cache the .git directory so repeated builds don't re-download submodules.
+RUN git submodule update --init && git submodule update --depth 1
+
+# Build with a persistent CMake cache mount so only changed files recompile.
+RUN --mount=type=cache,target=/mumble/repo/build,id=mumble-cmake-build \
+    cd /mumble/repo && \
+    mkdir -p build && cd build && \
+    cmake -G Ninja \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_NUMBER=0 \
+      -Dclient=OFF \
+      -Dserver=ON \
+      -Dice=ON \
+      -Dtests=ON \
+      -Dwarnings-as-errors=OFF \
+      -Dzeroconf=OFF \
+      -DCMAKE_UNITY_BUILD=ON \
+      .. && \
+    cmake --build . -j $(nproc) && \
+    cp /mumble/repo/build/mumble-server /mumble/mumble-server && \
+    (cp /mumble/repo/build/src/murmur/fcm/libmumble_push_fcm.so /mumble/ 2>/dev/null || true)
+
+# Run pchat regression tests
+RUN --mount=type=cache,target=/mumble/repo/build,id=mumble-cmake-build \
+    cd /mumble/repo/build && \
+    ctest --test-dir . -R TestPersistentChatManager --output-on-failure --no-tests=error
+
+# Copy default config
+RUN cp -f /mumble/repo/auxiliary_files/mumble-server.ini /mumble/default_config.ini 2>/dev/null \
+    || cp -f /mumble/repo/scripts/murmur.ini /mumble/default_config.ini
+
+
+FROM base
+ARG MUMBLE_UID=1000
+ARG MUMBLE_GID=1000
+RUN getent group $MUMBLE_GID && groupdel $(getent group $MUMBLE_GID | cut -d: -f1) || true \
+  && getent passwd $MUMBLE_UID && userdel $(getent passwd $MUMBLE_UID | cut -d: -f1) || true \
+  && groupadd --gid $MUMBLE_GID mumble \
+  && useradd --uid $MUMBLE_UID --gid $MUMBLE_GID mumble
+
+COPY --from=build /mumble/mumble-server /usr/bin/mumble-server
+# FCM push module is optional - only copied if built.
+# The file is guaranteed to exist (empty or real) thanks to the touch in the build stage.
+COPY --from=build /mumble/libmumble_push_fcm.so* /usr/bin/
+COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
+
+RUN mkdir -p /data && chown -R mumble:mumble /data && chown -R mumble:mumble /etc/mumble
+USER mumble
+EXPOSE 64738/tcp 64738/udp
+COPY entrypoint.sh /entrypoint.sh
+
+VOLUME ["/data"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/bin/mumble-server", "--foreground"]

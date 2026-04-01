@@ -1,0 +1,121 @@
+# syntax=docker/dockerfile:1
+# Debug Dockerfile: builds with debug symbols and includes GDB in the final image.
+# Usage:
+#   docker buildx build -f Dockerfile.debug -t mumble-server:debug \
+#     --build-context mumble-src=<path-to-repo> .
+#
+# Then run interactively:
+#   docker run -it --cap-add=SYS_PTRACE --security-opt seccomp=unconfined \
+#     mumble-server:debug
+
+FROM ubuntu:24.04 AS base
+
+ARG DEBIAN_FRONTEND=noninteractive
+RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
+  && apt-get update && apt-get install --no-install-recommends -y \
+  ca-certificates \
+  gdb \
+  libavahi-compat-libdnssd1 \
+  libcap2 \
+  libqt6core6t64 \
+  libqt6dbus6t64 \
+  libqt6network6t64 \
+  libqt6sql6t64 \
+  libqt6sql6-sqlite \
+  libqt6xml6t64 \
+  libzeroc-ice3.7t64 \
+  '^libprotobuf[0-9]+t?64?$' \
+  libsqlite3-0 \
+  '^libmysqlclient[0-9]+$' \
+  libpq5 \
+  '^libpocofoundation[0-9]+t?64?$' \
+  '^libpocodata[0-9]+t?64?$' \
+  '^libpocojson[0-9]+t?64?$' \
+  '^libpocoxml[0-9]+t?64?$' \
+  '^libpoconet[0-9]+t?64?$' \
+  '^libpoconetssl[0-9]+t?64?$' \
+  '^libpococrypto[0-9]+t?64?$' \
+  '^libpocojwt[0-9]+t?64?$' \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+
+FROM base AS build
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  build-essential \
+  ca-certificates \
+  cmake \
+  ninja-build \
+  gdb \
+  git \
+  libavahi-compat-libdnssd-dev \
+  libboost-dev \
+  libcap-dev \
+  libprotoc-dev \
+  libprotobuf-dev \
+  libssl-dev \
+  libxi-dev \
+  libzeroc-ice-dev \
+  libsqlite3-dev \
+  libmysqlclient-dev \
+  libpq-dev \
+  libpoco-dev \
+  pkg-config \
+  protobuf-compiler \
+  python3 \
+  qt6-base-dev \
+  qt6-tools-dev \
+  qt6-tools-dev-tools \
+  qt6-svg-dev \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY --from=mumble-src . /mumble/repo
+WORKDIR /mumble/repo
+
+RUN git submodule update --init && git submodule update --depth 1
+
+# Build with RelWithDebInfo for debug symbols + optimizations.
+RUN --mount=type=cache,target=/mumble/repo/build-debug,id=mumble-cmake-debug \
+    cd /mumble/repo && \
+    mkdir -p build-debug && cd build-debug && \
+    cmake -G Ninja \
+      -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DBUILD_NUMBER=0 \
+      -Dclient=OFF \
+      -Dserver=ON \
+      -Dice=ON \
+      -Dtests=ON \
+      -Dwarnings-as-errors=OFF \
+      -Dzeroconf=OFF \
+      -DCMAKE_UNITY_BUILD=ON \
+      .. && \
+    cmake --build . -j $(nproc) && \
+    cp /mumble/repo/build-debug/mumble-server /mumble/mumble-server && \
+    (cp /mumble/repo/build-debug/src/murmur/fcm/libmumble_push_fcm.so /mumble/ 2>/dev/null || true)
+
+RUN cp -f /mumble/repo/auxiliary_files/mumble-server.ini /mumble/default_config.ini 2>/dev/null \
+    || cp -f /mumble/repo/scripts/murmur.ini /mumble/default_config.ini
+
+
+FROM base
+ARG MUMBLE_UID=1000
+ARG MUMBLE_GID=1000
+RUN getent group $MUMBLE_GID && groupdel $(getent group $MUMBLE_GID | cut -d: -f1) || true \
+  && getent passwd $MUMBLE_UID && userdel $(getent passwd $MUMBLE_UID | cut -d: -f1) || true \
+  && groupadd --gid $MUMBLE_GID mumble \
+  && useradd --uid $MUMBLE_UID --gid $MUMBLE_GID mumble
+
+# Do NOT strip — keep debug symbols in the binary.
+COPY --from=build /mumble/mumble-server /usr/bin/mumble-server
+# FCM push module is optional - only copied if built.
+COPY --from=build /mumble/libmumble_push_fcm.so* /usr/bin/
+COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
+
+RUN mkdir -p /data && chown -R mumble:mumble /data && chown -R mumble:mumble /etc/mumble
+EXPOSE 64738/tcp 64738/udp
+COPY entrypoint.sh /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/bin/mumble-server", "-fg", "-v", "--ini", "/data/mumble_server_config.ini"]
