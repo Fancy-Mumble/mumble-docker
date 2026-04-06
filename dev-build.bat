@@ -44,6 +44,7 @@ docker rm mumble-pchat 2>nul
 docker run -d --name mumble-pchat ^
   -p 64738:64738/tcp ^
   -p 64738:64738/udp ^
+  -p 10000:10000/udp ^
   -e MUMBLE_CUSTOM_CONFIG_FILE=/data/mumble-server.ini ^
   -v mumble-pchat-data:/data ^
   -v "%SCRIPT_DIR%mumble-server.ini":/data/mumble-server.ini:ro ^
