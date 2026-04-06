@@ -7,7 +7,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG MUMBLE_VERSION=latest
 
 RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
-  && apt-get update && apt-get install --no-install-recommends -y \
+  && apt-get -o Acquire::Check-Date=false update && apt-get install --no-install-recommends -y \
   ca-certificates \
   libavahi-compat-libdnssd1 \
   libcap2 \
@@ -42,10 +42,11 @@ ARG DEBIAN_FRONTEND=noninteractive
 ADD ./scripts/* /mumble/scripts/
 WORKDIR /mumble/repo
 
-RUN apt-get update && apt-get install --no-install-recommends -y \
+RUN apt-get -o Acquire::Check-Date=false update && apt-get install --no-install-recommends -y \
   build-essential \
   ca-certificates \
   cmake \
+  curl \
   ninja-build \
   gdb \
   git \
@@ -73,7 +74,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 
 ARG MUMBLE_VERSION=latest
 ARG MUMBLE_BUILD_NUMBER=""
-ARG MUMBLE_CMAKE_ARGS=""
+ARG MUMBLE_CMAKE_ARGS="-Dwebrtc-sfu=OFF"
 
 # Clone the repo, build it and finally copy the default server ini file. Since this file may be at different locations and Docker
 # doesn't support conditional copies, we have to ensure that regardless of where the file is located in the repo, it will end
@@ -82,11 +83,25 @@ ARG MUMBLE_CMAKE_ARGS=""
 # remote branch advances (avoids stale clones without --no-cache).
 ADD https://api.github.com/repos/SetZero/mumble-server/git/refs/heads/1.6.x /tmp/git-version.json
 RUN /mumble/scripts/clone.sh
+
 RUN /mumble/scripts/build.sh
 RUN /mumble/scripts/copy_one_of.sh ./scripts/murmur.ini ./auxiliary_files/mumble-server.ini default_config.ini
 
 RUN git clone https://github.com/ncopa/su-exec.git /mumble/repo/su-exec \
     && cd /mumble/repo/su-exec && make
+
+
+# Build the Rust WebRTC SFU shared library in its own stage.
+FROM ubuntu:24.04 AS sfu-build
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  curl ca-certificates build-essential pkg-config libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+COPY --from=build /mumble/repo/3rdparty/webrtc-sfu /sfu
+WORKDIR /sfu
+RUN cargo build --release && strip target/release/libwebrtc_sfu.so
 
 
 
@@ -95,6 +110,8 @@ FROM base
 COPY --from=build /mumble/repo/build/mumble-server /usr/bin/mumble-server
 # FCM push module (optional - glob avoids failure if not built)
 COPY --from=build /mumble/repo/build/src/murmur/fcm/libmumble_push_fcm.so* /usr/bin/
+# WebRTC SFU Rust module - built in the sfu-build stage.
+COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
 COPY --from=build /mumble/repo/default_config.ini /etc/mumble/bare_config.ini
 COPY --from=build --chmod=755 /mumble/repo/su-exec/su-exec /usr/local/bin/su-exec
 

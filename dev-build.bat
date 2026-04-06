@@ -11,7 +11,7 @@ REM           import-db.bat  — import a local database file into the container
 setlocal
 
 set DOCKER_BUILDKIT=1
-set MUMBLE_SRC=F:\Dokumente\projekte\mumble_server\mumble-server
+set MUMBLE_SRC=C:\Users\Sebastian\Documents\Projects\Mumble\mumble-server
 set SCRIPT_DIR=%~dp0
 
 if "%1"=="--clean" (
@@ -47,7 +47,7 @@ docker run -d --name mumble-pchat ^
   -e MUMBLE_CUSTOM_CONFIG_FILE=/data/mumble-server.ini ^
   -v mumble-pchat-data:/data ^
   -v "%SCRIPT_DIR%mumble-server.ini":/data/mumble-server.ini:ro ^
-  -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-1ac7faeb7d.json":/data/fcm-credentials.json:ro ^
+  -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-62e68c91e6.json":/data/fcm-credentials.json:ro ^
   mumble-server:dev
 
 echo.
