@@ -12,7 +12,7 @@ FROM ubuntu:24.04 AS base
 
 ARG DEBIAN_FRONTEND=noninteractive
 RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
-  && apt-get update && apt-get install --no-install-recommends -y \
+  && apt-get -o Acquire::Check-Date=false update && apt-get install --no-install-recommends -y \
   ca-certificates \
   gdb \
   libavahi-compat-libdnssd1 \
@@ -40,13 +40,28 @@ RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/s
   && rm -rf /var/lib/apt/lists/*
 
 
+# Build the Rust WebRTC SFU shared library in its own stage.
+FROM ubuntu:24.04 AS sfu-build
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  curl ca-certificates build-essential pkg-config libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+COPY --from=mumble-src 3rdparty/webrtc-sfu /sfu
+WORKDIR /sfu
+RUN cargo build --release && strip target/release/libwebrtc_sfu.so
+
+
 FROM base AS build
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install --no-install-recommends -y \
+RUN apt-get -o Acquire::Check-Date=false update && apt-get install --no-install-recommends -y \
   build-essential \
   ca-certificates \
+  ccache \
   cmake \
+  curl \
   ninja-build \
   gdb \
   git \
@@ -78,11 +93,13 @@ WORKDIR /mumble/repo
 RUN git submodule update --init && git submodule update --depth 1
 
 # Build with RelWithDebInfo for debug symbols + optimizations.
-RUN --mount=type=cache,target=/mumble/repo/build-debug,id=mumble-cmake-debug \
+RUN --mount=type=cache,target=/root/.ccache,id=mumble-ccache-debug \
     cd /mumble/repo && \
     mkdir -p build-debug && cd build-debug && \
     cmake -G Ninja \
       -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+      -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+      -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
       -DBUILD_NUMBER=0 \
       -Dclient=OFF \
       -Dserver=ON \
@@ -90,6 +107,7 @@ RUN --mount=type=cache,target=/mumble/repo/build-debug,id=mumble-cmake-debug \
       -Dtests=ON \
       -Dwarnings-as-errors=OFF \
       -Dzeroconf=OFF \
+      -Dwebrtc-sfu=OFF \
       -DCMAKE_UNITY_BUILD=ON \
       .. && \
     cmake --build . -j $(nproc) && \
@@ -112,6 +130,8 @@ RUN getent group $MUMBLE_GID && groupdel $(getent group $MUMBLE_GID | cut -d: -f
 COPY --from=build /mumble/mumble-server /usr/bin/mumble-server
 # FCM push module is optional - only copied if built.
 COPY --from=build /mumble/libmumble_push_fcm.so* /usr/bin/
+# WebRTC SFU Rust module - built in the sfu-build stage.
+COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
 COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
 
 RUN mkdir -p /data && chown -R mumble:mumble /data && chown -R mumble:mumble /etc/mumble

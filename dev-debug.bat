@@ -8,7 +8,9 @@ REM   --clean   Prune the BuildKit CMake cache (full rebuild)
 setlocal
 
 set DOCKER_BUILDKIT=1
-set MUMBLE_SRC=F:\Dokumente\projekte\mumble_server\mumble-server
+set MUMBLE_SRC=C:\Users\Sebastian\Documents\Projects\Mumble\mumble-server
+set MUMBLE_UID=1000
+set MUMBLE_GID=1000
 set SCRIPT_DIR=%~dp0
 
 if "%1"=="--clean" (
@@ -49,7 +51,7 @@ docker run --rm ^
   --entrypoint /bin/sh ^
   -v mumble-pchat-data:/data ^
   mumble-server:debug ^
-  -c "rm -f /data/mumble-server.sqlite /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm && chmod 777 /data"
+  -c "rm -rf /data/mumble-server.sqlite /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm /data/fcm-credentials.json && chown -R %MUMBLE_UID%:%MUMBLE_GID% /data && chmod 775 /data"
 
 echo.
 echo === Initializing database and setting SuperUser password ===
@@ -59,27 +61,17 @@ REM Start the server briefly so it creates the DB + virtual server, then stop it
 docker run -d --rm ^
   --name mumble-debug-init ^
   --privileged ^
+  --user %MUMBLE_UID%:%MUMBLE_GID% ^
   --network none ^
   --entrypoint /usr/bin/mumble-server ^
   -v mumble-pchat-data:/data ^
   -v "%SCRIPT_DIR%mumble-server.ini":/data/mumble-server.ini:ro ^
-  -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-1ac7faeb7d.json":/data/fcm-credentials.json:ro ^
+  -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-62e68c91e6.json":/data/fcm-credentials.json:ro ^
   mumble-server:debug ^
   --foreground --ini /data/mumble-server.ini
 
 timeout /t 3 /nobreak >nul
 docker stop mumble-debug-init 2>nul
-
-REM Set SuperUser password on the freshly created DB.
-docker run --rm ^
-  --privileged ^
-  --network none ^
-  --entrypoint /usr/bin/mumble-server ^
-  -v mumble-pchat-data:/data ^
-  -v "%SCRIPT_DIR%mumble-server.ini":/data/mumble-server.ini:ro ^
-  -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-1ac7faeb7d.json":/data/fcm-credentials.json:ro ^
-  mumble-server:debug ^
-  --foreground --ini /data/mumble-server.ini --set-su-pw "mumble123"
 
 if exist "%LOCAL_DB%" (
     echo.
@@ -93,8 +85,28 @@ if exist "%LOCAL_DB%" (
 
     REM Fix permissions and clear WAL/SHM so the server can use the DB cleanly.
     docker run --rm --entrypoint /bin/sh -v mumble-pchat-data:/data mumble-server:debug ^
-      -c "chmod 666 /data/mumble-server.sqlite && rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm"
+      -c "chown %MUMBLE_UID%:%MUMBLE_GID% /data/mumble-server.sqlite && chmod 664 /data/mumble-server.sqlite && chmod 775 /data && rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm"
 )
+
+REM Set SuperUser password (after any DB import so it is never overwritten).
+echo.
+echo === Setting SuperUser password ===
+echo.
+
+docker run --rm ^
+  --privileged ^
+  --user %MUMBLE_UID%:%MUMBLE_GID% ^
+  --network none ^
+  --entrypoint /usr/bin/mumble-server ^
+  -v mumble-pchat-data:/data ^
+  -v "%SCRIPT_DIR%mumble-server.ini":/data/mumble-server.ini:ro ^
+  -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-62e68c91e6.json":/data/fcm-credentials.json:ro ^
+  mumble-server:debug ^
+  --foreground --ini /data/mumble-server.ini --set-su-pw "mumble123"
+
+REM Ensure DB and directory are writable before launching under GDB.
+docker run --rm --entrypoint /bin/sh -v mumble-pchat-data:/data mumble-server:debug ^
+  -c "test -f /data/mumble-server.sqlite && chown %MUMBLE_UID%:%MUMBLE_GID% /data/mumble-server.sqlite || true; test -f /data/mumble-server.sqlite && chmod 664 /data/mumble-server.sqlite || true; chown %MUMBLE_UID%:%MUMBLE_GID% /data; chmod 775 /data; rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm"
 
 REM Kill any container still holding port 64738 before launching the debug server.
 for /f "tokens=*" %%C in ('docker ps -q --filter "publish=64738"') do (
@@ -110,12 +122,13 @@ echo.
 docker run --rm ^
   --name mumble-debug ^
   --privileged ^
+  --user %MUMBLE_UID%:%MUMBLE_GID% ^
   --entrypoint gdb ^
   -p 64738:64738/tcp ^
   -p 64738:64738/udp ^
   -v mumble-pchat-data:/data ^
   -v "%SCRIPT_DIR%mumble-server.ini":/data/mumble-server.ini:ro ^
-  -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-1ac7faeb7d.json":/data/fcm-credentials.json:ro ^
+  -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-62e68c91e6.json":/data/fcm-credentials.json:ro ^
   mumble-server:debug ^
   --batch ^
   -ex "set pagination off" ^
