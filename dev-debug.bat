@@ -126,6 +126,7 @@ docker run --rm ^
   --entrypoint gdb ^
   -p 64738:64738/tcp ^
   -p 64738:64738/udp ^
+  -p 10000:10000/udp ^
   -v mumble-pchat-data:/data ^
   -v "%SCRIPT_DIR%mumble-server.ini":/data/mumble-server.ini:ro ^
   -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-62e68c91e6.json":/data/fcm-credentials.json:ro ^
