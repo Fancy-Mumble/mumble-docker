@@ -76,6 +76,12 @@ ARG MUMBLE_VERSION=latest
 ARG MUMBLE_BUILD_NUMBER=""
 ARG MUMBLE_CMAKE_ARGS="-Dwebrtc-sfu=OFF"
 
+# Install Rust toolchain (used to build the mumble-plugin-host cdylib and
+# the WebRTC SFU module from the cloned source tree).
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+  | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Clone the repo, build it and finally copy the default server ini file. Since this file may be at different locations and Docker
 # doesn't support conditional copies, we have to ensure that regardless of where the file is located in the repo, it will end
 # up at a unique path in our build container to be copied further down.
@@ -83,6 +89,16 @@ ARG MUMBLE_CMAKE_ARGS="-Dwebrtc-sfu=OFF"
 # remote branch advances (avoids stale clones without --no-cache).
 ADD https://api.github.com/repos/SetZero/mumble-server/git/refs/heads/1.6.x /tmp/git-version.json
 RUN /mumble/scripts/clone.sh
+
+# Build the Rust mumble-plugin-host cdylib and publish the artefacts at the
+# paths the C++ build expects (CMake otherwise warns and the linker fails
+# with undefined references to plugin_host_create / plugin_host_destroy / ...).
+RUN cd /mumble/repo/3rdparty/mumble-plugin-host \
+    && cargo build --release -p mumble-plugin-host \
+    && strip target/release/libmumble_plugin_host.so \
+    && mkdir -p lib include \
+    && cp target/release/libmumble_plugin_host.so lib/libmumble_plugin_host.so \
+    && cp host/include/mumble_plugin_host.h include/mumble_plugin_host.h
 
 RUN /mumble/scripts/build.sh
 RUN /mumble/scripts/copy_one_of.sh ./scripts/murmur.ini ./auxiliary_files/mumble-server.ini default_config.ini
@@ -112,6 +128,8 @@ COPY --from=build /mumble/repo/build/mumble-server /usr/bin/mumble-server
 COPY --from=build /mumble/repo/build/src/murmur/fcm/libmumble_push_fcm.so* /usr/bin/
 # WebRTC SFU Rust module - built in the sfu-build stage.
 COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
+# mumble-plugin-host Rust cdylib - dlopen'd at runtime by mumble-server.
+COPY --from=build /mumble/repo/3rdparty/mumble-plugin-host/lib/libmumble_plugin_host.so /usr/lib/
 COPY --from=build /mumble/repo/default_config.ini /etc/mumble/bare_config.ini
 COPY --from=build --chmod=755 /mumble/repo/su-exec/su-exec /usr/local/bin/su-exec
 

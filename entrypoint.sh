@@ -76,10 +76,12 @@ server_invocation+=( "$( normalize_cli_arg "--foreground" )" )
 
 normalize_name() {
 	local uppercase="${1^^}"
-        local stripped="${uppercase//_/}"
-        stripped="${stripped//./}"
-        stripped="${stripped//-/}"
-        echo "$stripped"
+	local stripped="${uppercase//_/}"
+	stripped="${stripped//./}"
+	stripped="${stripped//-/}"
+	echo "$stripped"
+}
+
 # Create an associative array for faster config option lookup
 declare -A option_for
 
