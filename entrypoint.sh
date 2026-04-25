@@ -7,7 +7,7 @@ MUMBLE_CHOWN_DATA=${MUMBLE_CHOWN_DATA:-true}
 
 readonly DATA_DIR="/data"
 readonly BARE_BONES_CONFIG_FILE="/etc/mumble/bare_config.ini"
-readonly CONFIG_REGEX="^(\;|\#)?\ *([a-zA-Z_0-9]+)=.*"
+readonly CONFIG_REGEX="^(\;|\#)?\ *([a-zA-Z_0-9.-]+)=.*"
 CONFIG_FILE="${DATA_DIR}/mumble_server_config.ini"
 
 readonly SENSITIVE_CONFIGS=(
@@ -76,9 +76,10 @@ server_invocation+=( "$( normalize_cli_arg "--foreground" )" )
 
 normalize_name() {
 	local uppercase="${1^^}"
-	echo "${uppercase//_/}"
-}
-
+        local stripped="${uppercase//_/}"
+        stripped="${stripped//./}"
+        stripped="${stripped//-/}"
+        echo "$stripped"
 # Create an associative array for faster config option lookup
 declare -A option_for
 

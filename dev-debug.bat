@@ -104,6 +104,12 @@ docker run --rm ^
   mumble-server:debug ^
   --foreground --ini /data/mumble-server.ini --set-su-pw "mumble123"
 
+REM Ensure the file-server storage directory exists and is owned by the server user.
+REM (The plugin reads its config from mumble-server.ini via the host's .ini fallback,
+REM  so no DB seeding is required.)
+docker run --rm --entrypoint /bin/sh -v mumble-pchat-data:/data mumble-server:debug ^
+  -c "mkdir -p /data/file-server-storage && chown -R %MUMBLE_UID%:%MUMBLE_GID% /data/file-server-storage && chmod 775 /data/file-server-storage"
+
 REM Ensure DB and directory are writable before launching under GDB.
 docker run --rm --entrypoint /bin/sh -v mumble-pchat-data:/data mumble-server:debug ^
   -c "test -f /data/mumble-server.sqlite && chown %MUMBLE_UID%:%MUMBLE_GID% /data/mumble-server.sqlite || true; test -f /data/mumble-server.sqlite && chmod 664 /data/mumble-server.sqlite || true; chown %MUMBLE_UID%:%MUMBLE_GID% /data; chmod 775 /data; rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm"
@@ -126,7 +132,10 @@ docker run --rm ^
   --entrypoint gdb ^
   -p 64738:64738/tcp ^
   -p 64738:64738/udp ^
+  -p 64739:64739/tcp ^
   -p 10000:10000/udp ^
+  -e RUST_LOG=mumble_file_server=debug,mumble_plugin_host=debug,info ^
+  -e MUMBLE_PLUGIN_LOG=mumble_file_server=debug,mumble_plugin_host=debug,info ^
   -v mumble-pchat-data:/data ^
   -v "%SCRIPT_DIR%mumble-server.ini":/data/mumble-server.ini:ro ^
   -v "%SCRIPT_DIR%mumble-5e6fe-firebase-adminsdk-fbsvc-62e68c91e6.json":/data/fcm-credentials.json:ro ^
