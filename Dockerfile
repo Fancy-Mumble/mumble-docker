@@ -116,7 +116,7 @@ COPY --from=build /mumble/repo/default_config.ini /etc/mumble/bare_config.ini
 COPY --from=build --chmod=755 /mumble/repo/su-exec/su-exec /usr/local/bin/su-exec
 
 
-EXPOSE 64738/tcp 64738/udp 10000/udp
+EXPOSE 64738/tcp 64738/udp 64739/tcp 10000/udp
 COPY entrypoint.sh /entrypoint.sh
 
 VOLUME ["/data"]

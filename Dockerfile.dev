@@ -49,6 +49,18 @@ COPY --from=mumble-src 3rdparty/webrtc-sfu /sfu
 WORKDIR /sfu
 RUN cargo build --release && strip target/release/libwebrtc_sfu.so
 
+# Build the Rust mumble-plugin-host cdylib (file-server, etc.) in its own stage.
+FROM ubuntu:24.04 AS plugin-host-build
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  curl ca-certificates build-essential pkg-config libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+COPY --from=mumble-src 3rdparty/mumble-plugin-host /plugin-host
+WORKDIR /plugin-host
+RUN cargo build --release -p mumble-plugin-host && strip target/release/libmumble_plugin_host.so
+
 FROM base AS build
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -90,6 +102,13 @@ WORKDIR /mumble/repo
 # Initialize submodules (needed for 3rdparty deps).
 # Cache the .git directory so repeated builds don't re-download submodules.
 RUN git submodule update --init && git submodule update --depth 1
+
+# Drop the prebuilt mumble-plugin-host artefacts where CMake expects them so
+# the C++ link step can resolve the cdylib symbols.
+COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so \
+    /mumble/repo/3rdparty/mumble-plugin-host/lib/libmumble_plugin_host.so
+COPY --from=plugin-host-build /plugin-host/host/include/mumble_plugin_host.h \
+    /mumble/repo/3rdparty/mumble-plugin-host/include/mumble_plugin_host.h
 
 # Build with a persistent CMake cache mount so only changed files recompile.
 RUN --mount=type=cache,target=/mumble/repo/build,id=mumble-cmake-build \
@@ -135,11 +154,13 @@ COPY --from=build /mumble/mumble-server /usr/bin/mumble-server
 COPY --from=build /mumble/libmumble_push_fcm.so* /usr/bin/
 # WebRTC SFU Rust module - built in the sfu-build stage.
 COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
+# mumble-plugin-host Rust module - built in plugin-host-build stage.
+COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so /usr/lib/
 COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
 
 RUN mkdir -p /data && chown -R mumble:mumble /data && chown -R mumble:mumble /etc/mumble
 USER mumble
-EXPOSE 64738/tcp 64738/udp 10000/udp
+EXPOSE 64738/tcp 64738/udp 64739/tcp 10000/udp
 COPY entrypoint.sh /entrypoint.sh
 
 VOLUME ["/data"]
