@@ -53,7 +53,9 @@ WORKDIR /sfu
 RUN cargo build --release && strip target/release/libwebrtc_sfu.so
 
 
-# Build the Rust mumble-plugin-host cdylib that the C++ server links against.
+# Build the Rust mumble-plugin-host cdylib in its own stage. This produces
+# libmumble_plugin_host.so plus the cbindgen-generated C header consumed by
+# the C++ server build.
 FROM ubuntu:24.04 AS plugin-host-build
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install --no-install-recommends -y \
@@ -106,9 +108,12 @@ WORKDIR /mumble/repo
 
 RUN git submodule update --init && git submodule update --depth 1
 
-# Make the prebuilt mumble-plugin-host cdylib visible to CMake's find_library.
+# Drop the prebuilt mumble-plugin-host artefacts where CMake expects them so
+# the C++ link step can resolve the cdylib symbols.
 COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so \
     /mumble/repo/3rdparty/mumble-plugin-host/lib/libmumble_plugin_host.so
+COPY --from=plugin-host-build /plugin-host/host/include/mumble_plugin_host.h \
+    /mumble/repo/3rdparty/mumble-plugin-host/include/mumble_plugin_host.h
 
 # Build with RelWithDebInfo for debug symbols + optimizations.
 RUN --mount=type=cache,target=/root/.ccache,id=mumble-ccache-debug \
@@ -157,7 +162,7 @@ COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.
 COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
 
 RUN mkdir -p /data && chown -R mumble:mumble /data && chown -R mumble:mumble /etc/mumble
-EXPOSE 64738/tcp 64738/udp 10000/udp
+EXPOSE 64738/tcp 64738/udp 64739/tcp 10000/udp
 COPY entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/usr/bin/mumble-server", "-fg", "-v", "--ini", "/data/mumble_server_config.ini"]

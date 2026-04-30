@@ -33,6 +33,7 @@ docker rm %CONTAINER% 2>nul
 docker run -d --name %CONTAINER% ^
   -p 64738:64738/tcp ^
   -p 64738:64738/udp ^
+  -p 64739:64739/tcp ^
   -v mumble-vanilla-data:/data ^
   %IMAGE%
 
