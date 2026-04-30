@@ -11,7 +11,7 @@ REM           import-db.bat  — import a local database file into the container
 setlocal
 
 set DOCKER_BUILDKIT=1
-set MUMBLE_SRC=C:\Users\Sebastian\Documents\Projects\Mumble\mumble-server
+set MUMBLE_SRC=F:\Dokumente\projekte\mumble_server\mumble-server
 set SCRIPT_DIR=%~dp0
 
 if "%1"=="--clean" (
