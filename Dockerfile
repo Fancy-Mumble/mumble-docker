@@ -13,6 +13,7 @@ RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/s
   libcap2 \
   libqt6core6t64 \
   libqt6dbus6t64 \
+  libqt6gui6t64 \
   libqt6network6t64 \
   libqt6sql6t64 \
   libqt6sql6-sqlite \
