@@ -5,14 +5,6 @@ on: [ push, pull_request ]
 # Note: As of now the strategy property is not supported when using reusable workflows, so we can't use a build
 # matrix to create the different build cases (see https://docs.github.com/en/actions/using-workflows/reusing-workflows#limitations)
 jobs:
-    build_1_5_857:
-        uses: ./.github/workflows/build_and_publish.yml
-        with:
-            mumble_version: "v1.5.857"
-            docker_version: '0'
-            publish: false
-            update_latest: true
-            platforms: "linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v8"
     build_latest:
         uses: ./.github/workflows/build_and_publish.yml
         with:
