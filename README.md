@@ -29,13 +29,93 @@ This Docker image builds the **[Fancy Mumble](https://github.com/SetZero/mumble-
 
 ## Quick Start Guide
 
-1. [Running the container](#running-the-container)
-2. [Exposed ports](#exposed-ports)
-3. [Configuration](#configuration)
-4. [Configuration wizard](#configuration-wizard)
-5. [Building the container](#building-the-container)
-6. [Fancy Mumble features](#fancy-mumble-features)
-7. [Local development & helper scripts](DEVELOPMENT.md)
+1. [Setup wizard walkthrough](#setup-wizard-walkthrough)
+2. [Running the container](#running-the-container)
+3. [Exposed ports](#exposed-ports)
+4. [Configuration](#configuration)
+5. [Configuration wizard reference](#configuration-wizard)
+6. [Building the container](#building-the-container)
+7. [Fancy Mumble features](#fancy-mumble-features)
+8. [Local development & helper scripts](DEVELOPMENT.md)
+
+
+## Setup wizard walkthrough
+
+The fastest way to get a working server is to let the interactive setup
+wizard generate your `.env` file and then start the container.  The
+wizard runs on any OS with Python 3.8+ and needs no third-party packages
+for the terminal mode.
+
+### 1 — Clone this repository
+
+```bash
+git clone https://github.com/SetZero/mumble-docker
+cd mumble-docker
+```
+
+### 2 — Run the setup wizard
+
+**Terminal (any OS)**
+
+```bash
+python -m setup_wizard
+```
+
+**Graphical UI** (optional — requires `dearpygui`)
+
+```bash
+pip install -r setup_wizard/requirements.txt
+python -m setup_wizard --gui
+```
+
+The GUI wizard is a multi-step form:
+
+- **Step 1 — Source tree**: point the wizard at your local
+  `mumble-server` checkout, or click **Clone...** to let the wizard
+  clone the server source for you and fill in the path automatically.
+- **Steps 2–7**: configure image names, ports, runtime UID/GID, the
+  SuperUser password (or click **Generate** for a strong random one),
+  optional file mounts, and Firebase push-notification credentials.
+- Navigate with **Next / Back**.  Each step is validated before
+  advancing.  Clicking **Save .env** on the last step writes the file.
+
+The wizard pre-fills every prompt from an existing `.env` so re-running
+it later to tweak a single value is non-destructive.
+
+### 3 — Start the server
+
+```bash
+# Pull the pre-built image and start
+docker compose up -d
+
+# Or build from source first (uses the .env you just created)
+python -m tools dev-build
+```
+
+### 4 — Set the SuperUser password (first run only)
+
+If you left `MUMBLE_SUPERUSER_PASSWORD` blank during the wizard the
+server prints a randomly generated password to its log on first start:
+
+```bash
+docker logs mumble-server 2>&1 | grep -i superuser
+```
+
+You can also set or reset the password at any time:
+
+```bash
+docker exec mumble-server mumble-server --ini /data/mumble_server_config.ini \
+    --set-su-pw <newpassword>
+```
+
+### 5 — Connect
+
+Open the [Fancy Mumble client](https://github.com/Fancy-Mumble/FancyMumbleNext)
+and connect to `<your-host>:64738`.  Log in as **SuperUser** with the
+password from the previous step to manage channels and permissions.
+
+> **Re-run the wizard any time** to update your configuration:
+> `python -m setup_wizard` or `python -m tools setup`.
 
 
 ## Running the container
