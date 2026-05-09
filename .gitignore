@@ -1,2 +1,28 @@
+# Local environment overrides
+.env
+
+# Local secrets — never commit
 mumble*.json
-mumble-5e6fe-firebase-adminsdk-fbsvc-1ac7faeb7d.json
+fcm-credentials*.json
+*-firebase-adminsdk*.json
+
+# Local databases & backups
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite.bak
+db/
+
+# Local build / debug logs
+*.log
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Python (setup wizard)
+__pycache__/
+*.pyc
+.venv/
+venv/

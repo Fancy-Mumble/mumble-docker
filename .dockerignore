@@ -1,0 +1,43 @@
+# ---------------------------------------------------------------------------
+# .dockerignore
+#
+# Files excluded from the Docker build context.
+# The production Dockerfile only needs:  scripts/  entrypoint.sh
+# Everything else is excluded here to keep the context small and, most
+# importantly, to prevent credential files from being sent to the daemon.
+# ---------------------------------------------------------------------------
+
+# Version control
+.git/
+.gitattributes
+
+# Local dev environment & secrets — never send to Docker daemon
+.env
+.env.*
+!.env.example
+*.json
+*-firebase-adminsdk*.json
+fcm-credentials*.json
+
+# Local databases
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite.bak
+db/
+
+# Build / debug logs
+*.log
+
+# Python build artefacts
+__pycache__/
+*.pyc
+
+# Dev-only helper scripts (not needed in the image)
+tools/
+setup_wizard/
+
+# Documentation (not needed in the image)
+README.md
+DEVELOPMENT.md
+LICENSE

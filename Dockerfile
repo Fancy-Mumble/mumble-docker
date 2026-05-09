@@ -77,6 +77,14 @@ ARG MUMBLE_VERSION=latest
 ARG MUMBLE_BUILD_NUMBER=""
 ARG MUMBLE_CMAKE_ARGS="-Dwebrtc-sfu=OFF"
 
+# Source repository / branch to build from.  Defaults to the Fancy Mumble
+# server fork.  Override with --build-arg MUMBLE_GIT_REPO=... /
+# MUMBLE_GIT_BRANCH=... to build from a different fork or upstream.
+ARG MUMBLE_GIT_REPO=https://github.com/SetZero/mumble-server
+ARG MUMBLE_GIT_BRANCH=1.6.x
+ENV MUMBLE_GIT_REPO=${MUMBLE_GIT_REPO}
+ENV MUMBLE_GIT_BRANCH=${MUMBLE_GIT_BRANCH}
+
 # Install Rust toolchain (used to build the mumble-plugin-host cdylib and
 # the WebRTC SFU module from the cloned source tree).
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
@@ -86,9 +94,6 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 # Clone the repo, build it and finally copy the default server ini file. Since this file may be at different locations and Docker
 # doesn't support conditional copies, we have to ensure that regardless of where the file is located in the repo, it will end
 # up at a unique path in our build container to be copied further down.
-# Fetch the branch ref from GitHub so Docker invalidates the cache when the
-# remote branch advances (avoids stale clones without --no-cache).
-ADD https://api.github.com/repos/SetZero/mumble-server/git/refs/heads/1.6.x /tmp/git-version.json
 RUN /mumble/scripts/clone.sh
 
 # Build the Rust mumble-plugin-host cdylib and publish the artefacts at the
