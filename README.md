@@ -212,7 +212,7 @@ volumes:
   - mumble-data:/data
 ```
 
-A documented sample config is provided at [`mumble-server.ini`](mumble-server.ini).
+A documented sample config is provided at [`mumble-server.ini.example`](mumble-server.ini.example).  Copy it to `mumble-server.ini` (gitignored) and edit to taste — the setup wizard will also bootstrap and patch this local copy for you when `MUMBLE_INI` is set.
 
 ### Using Docker / Podman secrets
 

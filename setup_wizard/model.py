@@ -13,6 +13,7 @@ sync regardless of how the user drives it.
 
 from __future__ import annotations
 
+import re
 import secrets
 import string
 from dataclasses import dataclass, field
@@ -58,9 +59,29 @@ def validate_uid(value: str) -> Optional[str]:
     return None if n >= 0 else "must be >= 0"
 
 
+def validate_bool(value: str) -> Optional[str]:
+    return None if value.strip().lower() in ("true", "false") else "must be true or false"
+
+
 @dataclass
 class Setting:
-    """A single key=value pair the wizard collects from the user."""
+    """A single key=value pair the wizard collects from the user.
+
+    ``kind`` controls how the value is rendered:
+
+    * ``"string"`` (default) — free-form text.
+    * ``"bool"`` — yes/no toggle in the CLI, checkbox in the GUI.  The
+      stored value is always the literal string ``"true"`` or ``"false"``
+      so it can be passed through to the container as a ``MUMBLE_CONFIG_*``
+      env var without further translation.
+
+    ``depends_on`` gates the setting on another setting's value.  When set
+    to ``(other_key, expected_value)``, the wizard only asks for / shows
+    this setting when the *current* value of ``other_key`` matches.  Used
+    to hide irrelevant questions (e.g. a feature's port when the feature
+    itself is disabled).  The dependency must be collected earlier in the
+    wizard for the check to see the user's choice.
+    """
 
     key: str
     label: str
@@ -70,15 +91,25 @@ class Setting:
     secret: bool = False
     # Skip writing this key to .env when the value is empty.
     skip_if_empty: bool = True
+    kind: str = "string"
+    depends_on: Optional[tuple[str, str]] = None
 
 
 @dataclass
 class Section:
-    """A logical grouping of related settings."""
+    """A logical grouping of related settings.
+
+    ``essential`` is the easy-mode filter: when the wizard runs in easy
+    mode (``--easy`` / "Easy setup" button) only essential sections are
+    shown to the user; non-essential sections fall back to their defaults
+    silently.  Use it to keep the quick path very short while still
+    writing a complete .env file.
+    """
 
     title: str
     description: str = ""
     settings: list[Setting] = field(default_factory=list)
+    essential: bool = False
 
 
 def load_existing_env(path: Path) -> dict[str, str]:
@@ -108,6 +139,76 @@ def write_env(path: Path, values: dict[str, str]) -> None:
     )
     body = "\n".join(f"{k}={v}" for k, v in values.items())
     path.write_text(header + body + "\n", encoding="utf-8")
+
+
+# ── MUMBLE_INI patcher ────────────────────────────────────────────────────────
+#
+# The dev-debug helper bypasses ``entrypoint.sh`` (it launches the server
+# under gdb directly), and dev-build with ``MUMBLE_INI`` set passes
+# ``MUMBLE_CUSTOM_CONFIG_FILE`` which causes the entrypoint to skip all
+# ``MUMBLE_CONFIG_*`` expansion.  In both cases the server reads its
+# config exclusively from the mounted .ini, so a wizard-only change to
+# the .env silently has no effect.
+#
+# To keep the .env and the .ini in sync, ``Wizard.save`` calls
+# ``patch_ini_toggles`` whenever ``MUMBLE_INI`` is set: any line matching
+# one of the keys below — commented or not — is rewritten with the
+# wizard's chosen value.
+
+# MUMBLE_CONFIG_* env var name  →  canonical .ini key
+INI_KEY_FOR_ENV: dict[str, str] = {
+    "MUMBLE_CONFIG_PLUGIN_FILE_SERVER_ENABLED": "plugin.file-server.enabled",
+    "MUMBLE_CONFIG_PUSHENABLED":                 "pushenabled",
+    "MUMBLE_CONFIG_WEBRTCSFUENABLED":            "webrtcsfuenabled",
+    "MUMBLE_CONFIG_WEBRTCSFUPUBLICIP":           "webrtcsfupublicip",
+}
+
+
+def patch_ini_toggles(path: Path, updates: dict[str, str]) -> list[str]:
+    """Rewrite the listed keys in an ini file in place.
+
+    ``updates`` maps the canonical .ini key (case-sensitive, dotted form
+    for plugin keys) to its new value.  Any line matching the key — with
+    or without a leading ``;`` / ``#`` — is replaced; missing keys are
+    appended at the end of the file with a marker comment.
+
+    Returns the list of keys that were actually written so callers can
+    surface a helpful status message.
+    """
+
+    if not updates:
+        return []
+    pending = dict(updates)
+    written: list[str] = []
+    if not path.exists():
+        return written
+    out_lines: list[str] = []
+    text = path.read_text(encoding="utf-8")
+    for raw in text.splitlines(keepends=True):
+        stripped = raw.rstrip("\r\n")
+        eol = raw[len(stripped):] or "\n"
+        replaced = False
+        for key in list(pending.keys()):
+            pattern = rf'^\s*[;#]?\s*{re.escape(key)}\s*='
+            if re.match(pattern, stripped):
+                value = pending.pop(key)
+                out_lines.append(f"{key}={value}{eol}")
+                written.append(key)
+                replaced = True
+                break
+        if not replaced:
+            out_lines.append(raw)
+    if pending:
+        # Append any keys not already present so a hand-edited .ini still
+        # gets the wizard's toggles applied.
+        if out_lines and not out_lines[-1].endswith("\n"):
+            out_lines.append("\n")
+        out_lines.append("\n; Added by setup_wizard\n")
+        for key, value in pending.items():
+            out_lines.append(f"{key}={value}\n")
+            written.append(key)
+    path.write_text("".join(out_lines), encoding="utf-8")
+    return written
 
 
 def random_password(length: int = 24) -> str:
@@ -159,18 +260,69 @@ def build_sections(existing: dict[str, str]) -> list[Section]:
             ],
         ),
         Section(
+            "Optional features",
+            "Enable or disable the bundled server plugins.  Each toggle "
+            "below maps directly to a server .ini key and is forwarded to "
+            "the container as a MUMBLE_CONFIG_* environment variable.\n"
+            "Disabled plugins are not loaded; the client UI hides the "
+            "corresponding controls automatically.",
+            essential=True,
+            settings=[
+                Setting("MUMBLE_CONFIG_PLUGIN_FILE_SERVER_ENABLED",
+                        "File server (uploads, custom emotes, avatars)",
+                        kind="bool",
+                        default=d("MUMBLE_CONFIG_PLUGIN_FILE_SERVER_ENABLED", "true"),
+                        help_text="Bundled HTTP server for file sharing.  When "
+                                  "disabled, clients hide the attach button and "
+                                  "the file-server port can stay closed.",
+                        validator=validate_bool,
+                        skip_if_empty=False),
+                Setting("MUMBLE_CONFIG_PUSHENABLED",
+                        "FCM push notifications (mobile / desktop)",
+                        kind="bool",
+                        default=d("MUMBLE_CONFIG_PUSHENABLED", "false"),
+                        help_text="Requires Firebase credentials in a later step.  "
+                                  "Leave disabled if you don't have an FCM project.",
+                        validator=validate_bool,
+                        skip_if_empty=False),
+                Setting("MUMBLE_CONFIG_WEBRTCSFUENABLED",
+                        "WebRTC SFU (server-side screen-share relay)",
+                        kind="bool",
+                        default=d("MUMBLE_CONFIG_WEBRTCSFUENABLED", "false"),
+                        help_text="Optional.  When disabled, screen sharing falls "
+                                  "back to direct client-to-client streams and the "
+                                  "SFU UDP port can stay closed.",
+                        validator=validate_bool,
+                        skip_if_empty=False),
+                Setting("MUMBLE_CONFIG_WEBRTCSFUPUBLICIP",
+                        "WebRTC SFU public IP",
+                        default=d("MUMBLE_CONFIG_WEBRTCSFUPUBLICIP", "127.0.0.1"),
+                        help_text="Address clients use to reach the SFU.  Use "
+                                  "127.0.0.1 for local testing on the same host; "
+                                  "the server's LAN / public IP otherwise.  "
+                                  "0.0.0.0 is NOT valid — ICE rejects it.",
+                        depends_on=("MUMBLE_CONFIG_WEBRTCSFUENABLED", "true"),
+                        skip_if_empty=False),
+            ],
+        ),
+        Section(
             "Network ports",
-            "Host-side ports.  Container-side ports are fixed by the Dockerfile.",
+            "Host-side ports.  Container-side ports are fixed by the Dockerfile.\n"
+            "Ports for disabled features are skipped automatically.",
             [
                 Setting("MUMBLE_PORT",
                         "Mumble voice / control port (TCP+UDP)",
                         default=d("MUMBLE_PORT", "64738"), validator=validate_port),
                 Setting("MUMBLE_FILESERVER_PORT",
                         "File-server HTTP port (TCP)",
-                        default=d("MUMBLE_FILESERVER_PORT", "64739"), validator=validate_port),
+                        default=d("MUMBLE_FILESERVER_PORT", "64739"),
+                        validator=validate_port,
+                        depends_on=("MUMBLE_CONFIG_PLUGIN_FILE_SERVER_ENABLED", "true")),
                 Setting("MUMBLE_SFU_PORT",
                         "WebRTC SFU port (UDP)",
-                        default=d("MUMBLE_SFU_PORT", "10000"), validator=validate_port),
+                        default=d("MUMBLE_SFU_PORT", "10000"),
+                        validator=validate_port,
+                        depends_on=("MUMBLE_CONFIG_WEBRTCSFUENABLED", "true")),
             ],
         ),
         Section(
@@ -189,7 +341,8 @@ def build_sections(existing: dict[str, str]) -> list[Section]:
             "Optional.  When set, the helper scripts configure SuperUser "
             "after first start.  Leave blank to let the server generate a "
             "random one (printed to the container log).",
-            [
+            essential=True,
+            settings=[
                 Setting("MUMBLE_SUPERUSER_PASSWORD",
                         "SuperUser password",
                         default=d("MUMBLE_SUPERUSER_PASSWORD"),
@@ -211,7 +364,7 @@ def build_sections(existing: dict[str, str]) -> list[Section]:
         Section(
             "Firebase Cloud Messaging (push notifications)",
             "FCM credentials let the server send push notifications to mobile/desktop\n"
-            "clients.  Leave blank to disable push notifications.\n"
+            "clients.  Skipped automatically when FCM is disabled in the features step.\n"
             "\n"
             "Recommended: encode the JSON key as base64 and set\n"
             "MUMBLE_FCM_CREDENTIALS_BASE64 in .env or as a container secret.\n"
@@ -223,12 +376,14 @@ def build_sections(existing: dict[str, str]) -> list[Section]:
                         default=d("MUMBLE_FCM_CREDENTIALS"),
                         help_text="Used by dev-build / dev-debug to mount the file at runtime.\n"
                                   "Never committed; pattern is gitignored.",
-                        validator=validate_path_exists_optional),
+                        validator=validate_path_exists_optional,
+                        depends_on=("MUMBLE_CONFIG_PUSHENABLED", "true")),
                 Setting("MUMBLE_FCM_CREDENTIALS_BASE64",
                         "Base64-encoded FCM JSON (for container env / secrets)",
                         default=d("MUMBLE_FCM_CREDENTIALS_BASE64"),
                         help_text="Paste a base64-encoded copy of the JSON key, OR leave\n"
-                                  "blank and the wizard will encode the path above for you."),
+                                  "blank and the wizard will encode the path above for you.",
+                        depends_on=("MUMBLE_CONFIG_PUSHENABLED", "true")),
             ],
         ),
         Section(

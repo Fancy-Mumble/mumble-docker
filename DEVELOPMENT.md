@@ -122,14 +122,17 @@ to a local path.
 ## Push notifications (FCM)
 
 Push support is **disabled by default** in the bundled
-[`mumble-server.ini`](mumble-server.ini).  To enable it:
+[`mumble-server.ini.example`](mumble-server.ini.example).  To enable it:
 
 1. Create a Firebase project and download a service-account JSON key.
 2. Save the JSON locally and point `MUMBLE_FCM_CREDENTIALS` at it (or
    mount it manually at `/data/fcm-credentials.json`).  The pattern
    `*-firebase-adminsdk*.json` is gitignored to reduce the risk of
    accidentally committing it.
-3. Edit `mumble-server.ini` (or the `MUMBLE_CONFIG_*` env vars) and set:
+3. Bootstrap your local `mumble-server.ini` from the example
+   (`cp mumble-server.ini.example mumble-server.ini`, or let the setup
+   wizard do it) and set, in either the .ini or the `MUMBLE_CONFIG_*`
+   env vars:
    ```
    pushenabled=true
    pushprojectid=your-firebase-project-id

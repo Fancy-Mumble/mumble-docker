@@ -122,12 +122,16 @@ def _prompt_bool(label: str, *, default: bool, non_interactive: bool = False) ->
         print(red("    ! please answer y or n"))
 
 
-def run_cli(output: Path, *, non_interactive: bool = False) -> int:
+def run_cli(output: Path, *, non_interactive: bool = False,
+            easy: bool = False) -> int:
     wizard = Wizard(output)
 
     print()
     print(bold(cyan("  mumble-docker setup wizard")))
     print(dim(f"  Writing to: {output}"))
+    if easy:
+        print(dim("  Easy mode: only essential questions are shown; "
+                  "defaults are kept for everything else."))
     if wizard.existing:
         print(dim("  An existing .env was found - its values are pre-filled."))
     print(dim("  Press Enter to accept the default shown in [brackets].\n"))
@@ -145,21 +149,68 @@ def run_cli(output: Path, *, non_interactive: bool = False) -> int:
             from .model import build_sections
             wizard.sections = build_sections(wizard.existing)
 
+    def _section_needed_in_easy_mode(section) -> bool:
+        if section.essential:
+            return True
+        # Pull a non-essential section back into easy mode whenever one of
+        # its settings becomes relevant — e.g. FCM credentials matter the
+        # moment the user toggles MUMBLE_CONFIG_PUSHENABLED on.
+        for setting in section.settings:
+            if setting.depends_on is None:
+                continue
+            dep_key, dep_expected = setting.depends_on
+            actual = wizard.values.get(dep_key,
+                                       wizard.existing.get(dep_key, "")).strip()
+            if actual.lower() == dep_expected.lower():
+                return True
+        return False
+
     for section in wizard.sections:
+        if easy and not _section_needed_in_easy_mode(section):
+            # Apply defaults silently so .env is still complete.
+            for setting in section.settings:
+                if setting.depends_on is not None:
+                    dep_key, dep_expected = setting.depends_on
+                    actual = wizard.values.get(dep_key,
+                                               wizard.existing.get(dep_key, "")).strip()
+                    if actual.lower() != dep_expected.lower():
+                        wizard.values.pop(setting.key, None)
+                        continue
+                wizard.set_value(setting.key, setting.default,
+                                 skip_if_empty=setting.skip_if_empty)
+            continue
         hr(section.title)
         if section.description:
             for line in section.description.splitlines():
                 print(dim(f"  {line.strip()}"))
             print()
         for setting in section.settings:
-            value = _prompt(
-                setting.label,
-                default=setting.default,
-                help_text=setting.help_text,
-                validator=setting.validator,
-                secret=setting.secret,
-                non_interactive=non_interactive,
-            )
+            if setting.depends_on is not None:
+                dep_key, dep_expected = setting.depends_on
+                actual = wizard.values.get(dep_key,
+                                           wizard.existing.get(dep_key, "")).strip()
+                if actual.lower() != dep_expected.lower():
+                    # Drop any stale value so we don't leak it into .env.
+                    wizard.values.pop(setting.key, None)
+                    continue
+            if setting.kind == "bool":
+                if setting.help_text:
+                    for line in setting.help_text.strip().splitlines():
+                        print(dim(f"    {line}"))
+                value = "true" if _prompt_bool(
+                    setting.label,
+                    default=setting.default.strip().lower() == "true",
+                    non_interactive=non_interactive,
+                ) else "false"
+            else:
+                value = _prompt(
+                    setting.label,
+                    default=setting.default,
+                    help_text=setting.help_text,
+                    validator=setting.validator,
+                    secret=setting.secret,
+                    non_interactive=non_interactive,
+                )
             wizard.set_value(setting.key, value, skip_if_empty=setting.skip_if_empty)
 
     # FCM credentials: offer to encode the JSON file automatically.
@@ -192,7 +243,11 @@ def run_cli(output: Path, *, non_interactive: bool = False) -> int:
             print(yellow("  Aborted - no file written."))
             return 1
 
-    wizard.save()
+    patched_ini = wizard.save()
     print(green(f"\n  [OK] Wrote {output}"))
+    if patched_ini is not None:
+        print(green(f"  [OK] Synced feature toggles into {patched_ini}"))
+        print(dim("  (dev-debug reads its config from this .ini directly, "
+                  "so the toggles need to live there too.)"))
     print(dim("  You can re-run this wizard at any time to update values."))
     return 0

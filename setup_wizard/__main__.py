@@ -35,6 +35,12 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Launch the DearPyGui front-end instead of the terminal wizard.",
     )
+    p.add_argument(
+        "--easy",
+        action="store_true",
+        help="Quick-start: only ask for the essentials (features + admin "
+             "password) and accept defaults for everything else.",
+    )
     return p
 
 
@@ -48,10 +54,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         from .view_gui import run_gui
-        return run_gui(args.output)
+        return run_gui(args.output, easy=args.easy)
 
     from .view_cli import run_cli
-    return run_cli(args.output, non_interactive=args.non_interactive)
+    return run_cli(args.output, non_interactive=args.non_interactive,
+                   easy=args.easy)
 
 
 if __name__ == "__main__":

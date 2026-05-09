@@ -68,6 +68,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "-p", f"{env['MUMBLE_SFU_PORT']}:10000/udp",
     ]
     run_args += c.standard_mounts(env)
+    run_args += c.passthrough_env(env)
     if env.get("MUMBLE_INI"):
         run_args += ["-e", "MUMBLE_CUSTOM_CONFIG_FILE=/data/mumble-server.ini"]
     run_args += [image]

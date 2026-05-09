@@ -260,6 +260,26 @@ def ini_arg(env: Mapping[str, str]) -> list[str]:
 # Mount-list helpers shared by the run helpers
 # ---------------------------------------------------------------------------
 
+def passthrough_env(env: Mapping[str, str]) -> list[str]:
+    """Return ``-e KEY=VALUE`` args for variables that the container's
+    entrypoint understands directly.
+
+    Forwards every ``MUMBLE_CONFIG_*`` key (the entrypoint expands these
+    into the generated mumble-server.ini) plus the FCM credential helper
+    ``MUMBLE_FCM_CREDENTIALS_BASE64``.  Empty values are skipped so a
+    blank ``.env`` line doesn't override a non-empty value baked into
+    the image or compose file.
+    """
+
+    args: list[str] = []
+    for key, value in env.items():
+        if not value:
+            continue
+        if key.startswith("MUMBLE_CONFIG_") or key == "MUMBLE_FCM_CREDENTIALS_BASE64":
+            args += ["-e", f"{key}={value}"]
+    return args
+
+
 def standard_mounts(env: Mapping[str, str]) -> list[str]:
     """Build the ``-v`` arguments common to every mumble container.
 

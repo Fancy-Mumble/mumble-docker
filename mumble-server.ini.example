@@ -1,9 +1,15 @@
 ; Sample Mumble server configuration for Docker.
 ;
-; This file shows commonly adjusted settings with sensible defaults
-; for a containerised deployment. Pass options via environment variables
-; (MUMBLE_CONFIG_<OPTION>=<value>) or mount this file as a custom config
-; with MUMBLE_CUSTOM_CONFIG_FILE=/data/mumble-server.ini.
+; Copy this file to "mumble-server.ini" in the same directory and edit
+; the values to match your deployment.  The setup wizard will also
+; create / patch mumble-server.ini for you when MUMBLE_INI is set.
+;
+; mumble-server.ini is gitignored; this .example file is the committed
+; reference template.
+;
+; Pass options via environment variables (MUMBLE_CONFIG_<OPTION>=<value>)
+; or mount this file as a custom config with
+; MUMBLE_CUSTOM_CONFIG_FILE=/data/mumble-server.ini.
 
 ; --------------------------------------------------------------------------
 ; Database
@@ -106,8 +112,11 @@ webrtcsfuenabled=false
 ; webrtcsfumodulepath=
 webrtcsfuport=10000
 ; Public IP that clients should use to reach the SFU.  Must be reachable
-; from the public internet for remote screen sharing to work.
-; webrtcsfupublicip=203.0.113.1
+; from each client.  Use 127.0.0.1 for local-only testing on the same
+; host; the server's LAN / public IP otherwise.  0.0.0.0 is NOT valid —
+; ICE rejects it as a candidate.
+webrtcsfupublicip=127.0.0.1
+
 ; --------------------------------------------------------------------------
 ; Fancy Mumble file server (custom emotes, avatar uploads, etc.)
 ;
@@ -115,6 +124,9 @@ webrtcsfuport=10000
 ; Values set via the admin UI or Ice RPC take precedence at runtime;
 ; the keys here are intended for deployment-time configuration.
 ;
+; enabled       - Master toggle. Set to false to skip loading the plugin.
+;                 The client UI hides the file-attach controls when no
+;                 fancy-file-server-config message is received. Default: true.
 ; storagePath   - Absolute path where uploaded files are stored.
 ;                 There is no working default; the plugin will refuse to
 ;                 start until this is set to an absolute path.
@@ -127,6 +139,7 @@ webrtcsfuport=10000
 ; baseUrl            - Public URL clients use to reach the file server.
 ;                      If unset, clients fall back to http://<host>:<port>.
 ; --------------------------------------------------------------------------
+plugin.file-server.enabled=true
 plugin.file-server.storagePath=/data/file-server-storage
 plugin.file-server.bindAddress=0.0.0.0
 plugin.file-server.port=64739
