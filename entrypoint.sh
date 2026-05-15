@@ -250,17 +250,23 @@ if [[ -f /run/secrets/MUMBLE_SUPERUSER_PASSWORD ]]; then
 	echo "Read superuser password from container secret"
 fi
 
-if [[ -n "${MUMBLE_SUPERUSER_PASSWORD}" ]]; then
-	#Variable to change the superuser password
-	"${server_invocation[@]}" "$( normalize_cli_arg "--set-su-pw" )" "$MUMBLE_SUPERUSER_PASSWORD"
-	echo "Successfully configured superuser password"
-fi
-
-# Set privileges for /app but only if pid 1 user is root and we are dropping privileges.
-# If container is run as an unprivileged user, it means owner already handled ownership setup on their own.
-# Running chown in that case (as non-root) will cause error
+# Set privileges for /data BEFORE the password-setting call so we can drop
+# privileges for that call too. Running --set-su-pw as root would otherwise
+# emit a flurry of "running murmurd as root", "Failed to set initial/final
+# capabilities", and "Failed to set priority limits" warnings, even though
+# the long-running server itself runs unprivileged via su-exec below.
 if [[ "$(id -u)" = "0" ]] && [[ "${PUID}" != "0" ]] && [[ "${MUMBLE_CHOWN_DATA}" = true ]]; then
 	chown -R ${PUID}:${PGID} /data
+fi
+
+if [[ -n "${MUMBLE_SUPERUSER_PASSWORD}" ]]; then
+	#Variable to change the superuser password
+	if [[ "$(id -u)" = "0" ]] && [[ "${PUID}" != "0" ]]; then
+		su-exec ${PUID}:${PGID} "${server_invocation[@]}" "$( normalize_cli_arg "--set-su-pw" )" "$MUMBLE_SUPERUSER_PASSWORD"
+	else
+		"${server_invocation[@]}" "$( normalize_cli_arg "--set-su-pw" )" "$MUMBLE_SUPERUSER_PASSWORD"
+	fi
+	echo "Successfully configured superuser password"
 fi
 
 # Show /data permissions, in case the user needs to match the mount point access
