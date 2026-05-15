@@ -1,6 +1,6 @@
 """Terminal (TTY) view for the setup wizard.
 
-Pure stdlib — works in cmd.exe, PowerShell and any POSIX shell.  Drives
+Pure stdlib - works in cmd.exe, PowerShell and any POSIX shell.  Drives
 a :class:`setup_wizard.controller.Wizard` instance.
 """
 
@@ -153,7 +153,7 @@ def run_cli(output: Path, *, non_interactive: bool = False,
         if section.essential:
             return True
         # Pull a non-essential section back into easy mode whenever one of
-        # its settings becomes relevant — e.g. FCM credentials matter the
+        # its settings becomes relevant - e.g. FCM credentials matter the
         # moment the user toggles MUMBLE_CONFIG_PUSHENABLED on.
         for setting in section.settings:
             if setting.depends_on is None:

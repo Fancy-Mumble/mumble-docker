@@ -20,15 +20,15 @@ readonly SENSITIVE_CONFIGS=(
 )
 
 # ---------------------------------------------------------------------------
-# FCM credentials — resolved before config is written so the decoded path can
+# FCM credentials - resolved before config is written so the decoded path can
 # be injected into pushcredentialspath.  Three sources are checked in order:
 #
 #   1. Docker / Podman secret   /run/secrets/MUMBLE_FCM_CREDENTIALS
-#        (preferred for production — credentials never touch the filesystem
+#        (preferred for production - credentials never touch the filesystem
 #        outside the container and are never part of any image layer)
 #
 #   2. Base64 env var            MUMBLE_FCM_CREDENTIALS_BASE64
-#        (good for CI / Kubernetes — base64-encode the JSON and pass it in)
+#        (good for CI / Kubernetes - base64-encode the JSON and pass it in)
 #
 #   3. Legacy file mount         leave pushcredentialspath in your ini / config
 #        (still works but requires a host file path)
@@ -45,7 +45,7 @@ if [[ -f /run/secrets/MUMBLE_FCM_CREDENTIALS ]]; then
 elif [[ -n "${MUMBLE_FCM_CREDENTIALS_BASE64:-}" ]]; then
 	echo "Decoding FCM credentials from MUMBLE_FCM_CREDENTIALS_BASE64"
 	if ! printf '%s' "$MUMBLE_FCM_CREDENTIALS_BASE64" | base64 -d > "$_FCM_CREDS_RUNTIME" 2>/dev/null; then
-		>&2 echo "[ERROR] Failed to decode MUMBLE_FCM_CREDENTIALS_BASE64 — is it valid base64?"
+		>&2 echo "[ERROR] Failed to decode MUMBLE_FCM_CREDENTIALS_BASE64 - is it valid base64?"
 		exit 1
 	fi
 	chmod 600 "$_FCM_CREDS_RUNTIME"

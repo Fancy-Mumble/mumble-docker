@@ -95,7 +95,7 @@ host file (or risking it landing in an image layer).
 
 ## Re-running the wizard
 
-Re-running on top of an existing `.env` is non-destructive — every
+Re-running on top of an existing `.env` is non-destructive - every
 prompt is pre-filled with the value already on disk, so you can adjust
 a single setting and accept the rest with Enter.
 

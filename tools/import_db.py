@@ -82,7 +82,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"chmod 666 '{db_path}' && rm -f '{db_path}-wal' '{db_path}-shm'",
     ])
 
-    c.info(f"Done — imported from: {src}")
+    c.info(f"Done - imported from: {src}")
     return 0
 
 

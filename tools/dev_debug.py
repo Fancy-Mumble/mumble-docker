@@ -131,7 +131,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "chmod 664 /data/mumble-server.sqlite && chmod 775 /data && "
             "rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm")
     else:
-        c.info(f"(no seed DB at {seed} — skipping)")
+        c.info(f"(no seed DB at {seed} - skipping)")
 
     pw = env.get("MUMBLE_SUPERUSER_PASSWORD")
     if pw:
@@ -168,7 +168,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         c.info(f"Stopping container {cid} which is using port {env['MUMBLE_PORT']}...")
         c.stop_and_remove(cid)
 
-    c.banner("Launching gdb (batch mode — backtrace on crash)")
+    c.banner("Launching gdb (batch mode - backtrace on crash)")
     c.docker([
         "run", "--rm",
         "--name", container,

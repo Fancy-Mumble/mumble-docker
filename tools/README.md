@@ -1,7 +1,7 @@
 # `tools/`
 
 Cross-platform helper scripts for **mumble-docker**, written in pure
-Python 3.8+ stdlib.  They run identically on Windows, macOS and Linux —
+Python 3.8+ stdlib.  They run identically on Windows, macOS and Linux -
 the only runtime dependency is the `docker` CLI.
 
 ## Layout
@@ -73,7 +73,7 @@ list of variables.
   message if it isn't installed.
 * On Windows: Docker Desktop with the Linux engine.
 * `dev-debug` additionally relies on `gdb` being present **inside**
-  the debug image (it is — that's what `Dockerfile.debug` installs).
+  the debug image (it is - that's what `Dockerfile.debug` installs).
 
 ## Why Python instead of `.bat` / `.sh`?
 
@@ -82,7 +82,7 @@ list of variables.
   characters Just Work without quoting gymnastics.
 * Argument parsing, validation and `--help` come for free via
   `argparse`.
-* Easier to extend — drop a new module in this folder and register it
+* Easier to extend - drop a new module in this folder and register it
   in `__main__.py`.
 
 ## Adding a new command

@@ -2,7 +2,7 @@
 
 This document describes the helper scripts used for local development,
 debugging and publishing of custom Mumble server images.  They are
-**optional** — the production [Dockerfile](Dockerfile) and the
+**optional** - the production [Dockerfile](Dockerfile) and the
 [README](README.md) are sufficient for end users.
 
 Layout:
@@ -16,7 +16,7 @@ Layout:
 ```
 
 The helpers under [`tools/`](tools/README.md) are pure Python 3.8+
-stdlib and run identically on Windows, macOS and Linux — the only
+stdlib and run identically on Windows, macOS and Linux - the only
 runtime requirement is the `docker` CLI.  All tunables are read from
 the environment, with defaults documented in
 [`.env.example`](.env.example).
@@ -86,7 +86,7 @@ important ones are:
 ## Building from a fork
 
 The production [Dockerfile](Dockerfile) clones from
-`https://github.com/SetZero/mumble-server` (branch `1.6.x`) by default —
+`https://github.com/SetZero/mumble-server` (branch `1.6.x`) by default -
 this is the Fancy Mumble server fork that this image is built around.
 The matching client lives at
 [Fancy-Mumble/FancyMumbleNext](https://github.com/Fancy-Mumble/FancyMumbleNext).

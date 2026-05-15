@@ -11,7 +11,7 @@
 .git/
 .gitattributes
 
-# Local dev environment & secrets — never send to Docker daemon
+# Local dev environment & secrets - never send to Docker daemon
 .env
 .env.*
 !.env.example

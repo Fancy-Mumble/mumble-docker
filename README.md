@@ -1,13 +1,13 @@
-# Mumble Docker — Fancy Mumble Edition
+# Mumble Docker - Fancy Mumble Edition
 
 Mumble is a free, open source, low latency, high quality voice chat application.
 
 This Docker image builds the **[Fancy Mumble](https://github.com/SetZero/mumble-server) server fork**, which extends the upstream Mumble server with:
 
-- **Persistent chat** — encrypted, server-stored message history
-- **Push notifications** — Firebase Cloud Messaging (FCM) support via a pluggable shared library
-- **WebRTC SFU** — server-side relay for screen sharing streams (Rust, `libwebrtc_sfu.so`)
-- **File server plugin** — custom emotes, avatar uploads and file attachments (`libmumble_plugin_host.so`)
+- **Persistent chat** - encrypted, server-stored message history
+- **Push notifications** - Firebase Cloud Messaging (FCM) support via a pluggable shared library
+- **WebRTC SFU** - server-side relay for screen sharing streams (Rust, `libwebrtc_sfu.so`)
+- **File server plugin** - custom emotes, avatar uploads and file attachments (`libmumble_plugin_host.so`)
 
 <p align="center">
   <b>
@@ -46,14 +46,14 @@ wizard generate your `.env` file and then start the container.  The
 wizard runs on any OS with Python 3.8+ and needs no third-party packages
 for the terminal mode.
 
-### 1 — Clone this repository
+### 1 - Clone this repository
 
 ```bash
 git clone https://github.com/SetZero/mumble-docker
 cd mumble-docker
 ```
 
-### 2 — Run the setup wizard
+### 2 - Run the setup wizard
 
 **Terminal (any OS)**
 
@@ -61,7 +61,7 @@ cd mumble-docker
 python -m setup_wizard
 ```
 
-**Graphical UI** (optional — requires `dearpygui`)
+**Graphical UI** (optional - requires `dearpygui`)
 
 ```bash
 pip install -r setup_wizard/requirements.txt
@@ -70,7 +70,7 @@ python -m setup_wizard --gui
 
 The GUI wizard is a multi-step form:
 
-- **Step 1 — Source tree**: point the wizard at your local
+- **Step 1 - Source tree**: point the wizard at your local
   `mumble-server` checkout, or click **Clone...** to let the wizard
   clone the server source for you and fill in the path automatically.
 - **Steps 2–7**: configure image names, ports, runtime UID/GID, the
@@ -82,7 +82,7 @@ The GUI wizard is a multi-step form:
 The wizard pre-fills every prompt from an existing `.env` so re-running
 it later to tweak a single value is non-destructive.
 
-### 3 — Start the server
+### 3 - Start the server
 
 ```bash
 # Pull the pre-built image and start
@@ -92,7 +92,7 @@ docker compose up -d
 python -m tools dev-build
 ```
 
-### 4 — Set the SuperUser password (first run only)
+### 4 - Set the SuperUser password (first run only)
 
 If you left `MUMBLE_SUPERUSER_PASSWORD` blank during the wizard the
 server prints a randomly generated password to its log on first start:
@@ -108,7 +108,7 @@ docker exec mumble-server mumble-server --ini /data/mumble_server_config.ini \
     --set-su-pw <newpassword>
 ```
 
-### 5 — Connect
+### 5 - Connect
 
 Open the [Fancy Mumble client](https://github.com/Fancy-Mumble/FancyMumbleNext)
 and connect to `<your-host>:64738`.  Log in as **SuperUser** with the
@@ -174,8 +174,8 @@ volumes:
 | Port | Protocol | Purpose |
 |------|----------|---------|
 | `64738` | TCP + UDP | Mumble voice and control (standard port) |
-| `64739` | TCP | Built-in file server — emotes, avatar uploads, attachments |
-| `10000` | UDP | WebRTC SFU — server-side relay for screen sharing |
+| `64739` | TCP | Built-in file server - emotes, avatar uploads, attachments |
+| `10000` | UDP | WebRTC SFU - server-side relay for screen sharing |
 | `6502`  | TCP | ICE RPC admin interface (loopback only, opt-in) |
 
 
@@ -202,7 +202,7 @@ environment:
 
 ### Using a custom config file
 
-Mount your own `mumble-server.ini` and point the entrypoint at it — all `MUMBLE_CONFIG_*` variables are then **ignored**:
+Mount your own `mumble-server.ini` and point the entrypoint at it - all `MUMBLE_CONFIG_*` variables are then **ignored**:
 
 ```yaml
 environment:
@@ -212,7 +212,7 @@ volumes:
   - mumble-data:/data
 ```
 
-A documented sample config is provided at [`mumble-server.ini.example`](mumble-server.ini.example).  Copy it to `mumble-server.ini` (gitignored) and edit to taste — the setup wizard will also bootstrap and patch this local copy for you when `MUMBLE_INI` is set.
+A documented sample config is provided at [`mumble-server.ini.example`](mumble-server.ini.example).  Copy it to `mumble-server.ini` (gitignored) and edit to taste - the setup wizard will also bootstrap and patch this local copy for you when `MUMBLE_INI` is set.
 
 ### Using Docker / Podman secrets
 
@@ -304,7 +304,7 @@ This clones the [Fancy Mumble server fork](https://github.com/SetZero/mumble-ser
 | `MUMBLE_BUILD_NUMBER` | _(empty)_ | Optional build number embedded in the binary |
 | `PUID` / `PGID` | `10000` | UID/GID of the `mumble` user in the final image |
 
-Example — build from a specific tag with the WebRTC SFU enabled:
+Example - build from a specific tag with the WebRTC SFU enabled:
 
 ```bash
 docker build \
@@ -313,7 +313,7 @@ docker build \
   .
 ```
 
-Example — build from a different fork:
+Example - build from a different fork:
 
 ```bash
 docker build \
@@ -332,9 +332,9 @@ docker build --build-arg PUID=1000 --build-arg PGID=1000 .
 
 ### Common build issues
 
-**`Got permission denied while trying to connect to the Docker daemon socket`** — you need to be in the `docker` group. See the [official docs](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user).
+**`Got permission denied while trying to connect to the Docker daemon socket`** - you need to be in the `docker` group. See the [official docs](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user).
 
-**`apt-get` fails with "not valid yet"** — clock skew in BuildKit. The Dockerfiles already pass `-o Acquire::Check-Date=false` to work around this.
+**`apt-get` fails with "not valid yet"** - clock skew in BuildKit. The Dockerfiles already pass `-o Acquire::Check-Date=false` to work around this.
 
 
 ## Fancy Mumble features
@@ -356,13 +356,13 @@ The server dynamically loads `libmumble_push_fcm.so` (included in the image) to 
 
 > **Security note:** Firebase service-account JSON keys must never be baked into a Docker image layer. The entrypoint decodes the credentials at runtime into a tmpfs path (`/tmp/fcm-credentials.json`) that exists only inside the running container and is never committed to any layer.
 
-#### Step 1 — obtain a service-account key
+#### Step 1 - obtain a service-account key
 
 Create a Firebase project, go to **Project settings → Service accounts → Generate new private key** and download the JSON file.
 
-#### Step 2 — supply credentials at runtime (pick one method)
+#### Step 2 - supply credentials at runtime (pick one method)
 
-**Method A — Docker / Podman secret (recommended for production)**
+**Method A - Docker / Podman secret (recommended for production)**
 
 ```bash
 # Create the secret from the JSON file
@@ -387,7 +387,7 @@ secrets:
 
 The entrypoint reads `/run/secrets/MUMBLE_FCM_CREDENTIALS` automatically and sets `pushcredentialspath` for you.
 
-**Method B — base64 environment variable (good for Kubernetes / CI)**
+**Method B - base64 environment variable (good for Kubernetes / CI)**
 
 Encode the JSON key on your workstation:
 
@@ -410,7 +410,7 @@ environment:
 
 The setup wizard (`python -m setup_wizard`, see [Configuration wizard](#configuration-wizard)) can encode the file for you automatically.
 
-**Method C — file mount (local development only)**
+**Method C - file mount (local development only)**
 
 ```yaml
 volumes:
@@ -421,9 +421,9 @@ environment:
   MUMBLE_CONFIG_PUSHCREDENTIALSPATH: /data/fcm-credentials.json
 ```
 
-> Do not use a file mount in production — it couples the container to a host path and risks the file being accidentally included in an image build context. A `.dockerignore` is provided but defence in depth matters.
+> Do not use a file mount in production - it couples the container to a host path and risks the file being accidentally included in an image build context. A `.dockerignore` is provided but defence in depth matters.
 
-#### Step 3 — tune notification events
+#### Step 3 - tune notification events
 
 ```ini
 pushnotifytextmessage=true

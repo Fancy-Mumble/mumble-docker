@@ -150,7 +150,7 @@ RUN getent group $MUMBLE_GID && groupdel $(getent group $MUMBLE_GID | cut -d: -f
   && groupadd --gid $MUMBLE_GID mumble \
   && useradd --uid $MUMBLE_UID --gid $MUMBLE_GID mumble
 
-# Do NOT strip — keep debug symbols in the binary.
+# Do NOT strip - keep debug symbols in the binary.
 COPY --from=build /mumble/mumble-server /usr/bin/mumble-server
 # FCM push module is optional - only copied if built.
 COPY --from=build /mumble/libmumble_push_fcm.so* /usr/bin/

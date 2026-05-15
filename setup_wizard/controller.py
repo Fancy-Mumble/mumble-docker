@@ -43,7 +43,7 @@ class Wizard:
     ``source`` is the path values are *loaded* from when the wizard
     starts; ``output`` is where they are *saved*.  They default to the
     same path (the classic "edit project .env" flow), but the GUI
-    config selector lets the user pick them independently — load from
+    config selector lets the user pick them independently - load from
     a template and save somewhere new without overwriting the original.
     """
 
@@ -102,7 +102,7 @@ class Wizard:
         """Persist the wizard's values to ``self.output``.
 
         When ``MUMBLE_INI`` is set, the same feature toggles are also
-        patched into that .ini — the dev-debug flow loads its config
+        patched into that .ini - the dev-debug flow loads its config
         straight from the mounted file and never sees ``MUMBLE_CONFIG_*``
         env vars, so this keeps the two stores from drifting apart.
         If ``MUMBLE_INI`` points at a path that doesn't exist yet, the

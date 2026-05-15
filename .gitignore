@@ -1,12 +1,12 @@
 # Local environment overrides
 .env
 
-# Local mumble server config — bootstrap from mumble-server.ini.example.
+# Local mumble server config - bootstrap from mumble-server.ini.example.
 # The wizard patches this in place when MUMBLE_INI is set, so it shouldn't
 # be committed.  The .example file is the committed reference template.
 mumble-server.ini
 
-# Local secrets — never commit
+# Local secrets - never commit
 mumble*.json
 fcm-credentials*.json
 *-firebase-adminsdk*.json

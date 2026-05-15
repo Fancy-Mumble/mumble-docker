@@ -67,7 +67,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--set-su-pw", pw,
         ])
 
-    c.banner(f"Done — server running on localhost:{env['MUMBLE_PORT']}")
+    c.banner(f"Done - server running on localhost:{env['MUMBLE_PORT']}")
     c.info(f"Logs:  docker logs -f {container}")
     return 0
 

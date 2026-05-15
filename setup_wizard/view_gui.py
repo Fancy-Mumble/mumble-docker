@@ -115,7 +115,7 @@ def run_gui(output: Path, *, easy: bool = False) -> int:
     # `active_steps` is the subset of section indices the stepper walks
     # through.  In full mode it's every section; in easy mode it's just
     # the essential ones.  Non-essential sections are still part of the
-    # save loop — their widget defaults end up in the .env unchanged.
+    # save loop - their widget defaults end up in the .env unchanged.
     state: dict = {
         "step": 0,
         "easy": easy,
@@ -164,7 +164,7 @@ def run_gui(output: Path, *, easy: bool = False) -> int:
         Full mode: every section.  Easy mode: essential sections plus
         any non-essential section that has at least one currently-
         relevant dependent setting (e.g. FCM credentials become
-        relevant — and thus mandatory to ask for — once the user
+        relevant - and thus mandatory to ask for - once the user
         toggles ``MUMBLE_CONFIG_PUSHENABLED`` on).
         """
         out: list[int] = []
@@ -219,7 +219,7 @@ def run_gui(output: Path, *, easy: bool = False) -> int:
         active_set = set(active)
         cur_section_idx = active[step]
         # All dots / separators stay visible so the user can see which
-        # sections are being skipped — inactive ones are just dimmed.
+        # sections are being skipped - inactive ones are just dimmed.
         for i, tag in enumerate(dot_tags):
             dpg.configure_item(tag, show=True)
             if i not in active_set:
@@ -264,14 +264,14 @@ def run_gui(output: Path, *, easy: bool = False) -> int:
         if prev_section_idx in active:
             state["step"] = active.index(prev_section_idx)
         else:
-            # Previously-active section is no longer included — pin to 0
+            # Previously-active section is no longer included - pin to 0
             # so the wizard stays in a consistent state.  In practice this
             # only happens if the user goes back and toggles off a feature
             # whose section they were on, which the dependency rules of
             # `_compute_active_steps` make impossible.
             state["step"] = 0
 
-    # Initial active_steps — uses wizard.existing values for dependency
+    # Initial active_steps - uses wizard.existing values for dependency
     # checks since widgets don't exist yet at this point.
     state["active_steps"] = _compute_active_steps()
 
@@ -594,7 +594,7 @@ def run_gui(output: Path, *, easy: bool = False) -> int:
         """Push current `wizard.sections` defaults back into the widgets.
 
         Called after the user picks a different source in the startup
-        dialog — `wizard.reload(...)` rebuilds sections with the new
+        dialog - `wizard.reload(...)` rebuilds sections with the new
         existing-values map, which we then mirror into the live UI.
         """
         for sec in wizard.sections:

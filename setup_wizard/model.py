@@ -69,8 +69,8 @@ class Setting:
 
     ``kind`` controls how the value is rendered:
 
-    * ``"string"`` (default) — free-form text.
-    * ``"bool"`` — yes/no toggle in the CLI, checkbox in the GUI.  The
+    * ``"string"`` (default) - free-form text.
+    * ``"bool"`` - yes/no toggle in the CLI, checkbox in the GUI.  The
       stored value is always the literal string ``"true"`` or ``"false"``
       so it can be passed through to the container as a ``MUMBLE_CONFIG_*``
       env var without further translation.
@@ -152,7 +152,7 @@ def write_env(path: Path, values: dict[str, str]) -> None:
 #
 # To keep the .env and the .ini in sync, ``Wizard.save`` calls
 # ``patch_ini_toggles`` whenever ``MUMBLE_INI`` is set: any line matching
-# one of the keys below — commented or not — is rewritten with the
+# one of the keys below - commented or not - is rewritten with the
 # wizard's chosen value.
 
 # MUMBLE_CONFIG_* env var name  →  canonical .ini key
@@ -168,8 +168,8 @@ def patch_ini_toggles(path: Path, updates: dict[str, str]) -> list[str]:
     """Rewrite the listed keys in an ini file in place.
 
     ``updates`` maps the canonical .ini key (case-sensitive, dotted form
-    for plugin keys) to its new value.  Any line matching the key — with
-    or without a leading ``;`` / ``#`` — is replaced; missing keys are
+    for plugin keys) to its new value.  Any line matching the key - with
+    or without a leading ``;`` / ``#`` - is replaced; missing keys are
     appended at the end of the file with a marker comment.
 
     Returns the list of keys that were actually written so callers can
@@ -300,7 +300,7 @@ def build_sections(existing: dict[str, str]) -> list[Section]:
                         help_text="Address clients use to reach the SFU.  Use "
                                   "127.0.0.1 for local testing on the same host; "
                                   "the server's LAN / public IP otherwise.  "
-                                  "0.0.0.0 is NOT valid — ICE rejects it.",
+                                  "0.0.0.0 is NOT valid - ICE rejects it.",
                         depends_on=("MUMBLE_CONFIG_WEBRTCSFUENABLED", "true"),
                         skip_if_empty=False),
             ],

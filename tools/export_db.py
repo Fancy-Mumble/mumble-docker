@@ -65,7 +65,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         c.docker_quiet(["cp", f"{container}:{db_path}-wal", f"{out}-wal"])
         c.docker_quiet(["cp", f"{container}:{db_path}-shm", f"{out}-shm"])
 
-    c.info(f"Done — exported to: {out}")
+    c.info(f"Done - exported to: {out}")
     return 0
 
 

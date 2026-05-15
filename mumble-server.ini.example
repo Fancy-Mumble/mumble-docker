@@ -113,7 +113,7 @@ webrtcsfuenabled=false
 webrtcsfuport=10000
 ; Public IP that clients should use to reach the SFU.  Must be reachable
 ; from each client.  Use 127.0.0.1 for local-only testing on the same
-; host; the server's LAN / public IP otherwise.  0.0.0.0 is NOT valid —
+; host; the server's LAN / public IP otherwise.  0.0.0.0 is NOT valid -
 ; ICE rejects it as a candidate.
 webrtcsfupublicip=127.0.0.1
 
