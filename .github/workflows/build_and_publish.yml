@@ -9,7 +9,12 @@ on:
             docker_version:
                 required: true
                 type: string
+            store:
+                description: "Push a sha-tagged image to GHCR (e.g. for main-branch CI builds)"
+                required: true
+                type: boolean
             publish:
+                description: "Push release tags to both GHCR and DockerHub"
                 required: true
                 type: boolean
             update_latest:
@@ -17,7 +22,7 @@ on:
                 type: boolean
 
 # Builds each platform group on a native runner in parallel, then merges the
-# per-platform digests into a single multi-arch manifest (when publishing).
+# per-platform digests into a single multi-arch manifest (when store or publish).
 # Platform mapping:
 #   linux/amd64              → ubuntu-latest        (native x86-64)
 #   linux/arm64,linux/arm/v7 → ubuntu-24.04-arm     (native ARM64; arm/v7 via fast QEMU on ARM)
@@ -34,7 +39,7 @@ jobs:
         runs-on: ${{ matrix.runner }}
         steps:
             - name: Login to GitHub Container registry
-              if: ${{ inputs.publish }}
+              if: ${{ inputs.store || inputs.publish }}
               uses: docker/login-action@v3
               with:
                 registry: ghcr.io
@@ -64,7 +69,7 @@ jobs:
               uses: docker/setup-buildx-action@v3
 
             - name: Build and push digest
-              if: ${{ inputs.publish }}
+              if: ${{ inputs.store || inputs.publish }}
               id: build
               uses: docker/build-push-action@v6
               with:
@@ -74,8 +79,8 @@ jobs:
                 build-args: |
                     MUMBLE_VERSION=${{ inputs.mumble_version }}
 
-            - name: Build (no publish)
-              if: ${{ ! inputs.publish }}
+            - name: Build (validate only, no push)
+              if: ${{ ! inputs.store && ! inputs.publish }}
               uses: docker/build-push-action@v6
               with:
                 context: .
@@ -85,14 +90,14 @@ jobs:
                     MUMBLE_VERSION=${{ inputs.mumble_version }}
 
             - name: Export digest
-              if: ${{ inputs.publish }}
+              if: ${{ inputs.store || inputs.publish }}
               run: |
                 mkdir -p /tmp/digests
                 digest="${{ steps.build.outputs.digest }}"
                 touch "/tmp/digests/${digest#sha256:}"
 
             - name: Upload digest
-              if: ${{ inputs.publish }}
+              if: ${{ inputs.store || inputs.publish }}
               uses: actions/upload-artifact@v4
               with:
                 name: digests-${{ matrix.runner }}
@@ -101,7 +106,7 @@ jobs:
                 retention-days: 1
 
     merge:
-        if: ${{ inputs.publish }}
+        if: ${{ inputs.store || inputs.publish }}
         needs: build
         runs-on: ubuntu-latest
         steps:
@@ -113,6 +118,7 @@ jobs:
                 merge-multiple: true
 
             - name: Login to DockerHub
+              if: ${{ inputs.publish }}
               uses: docker/login-action@v3
               with:
                 username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -128,19 +134,26 @@ jobs:
             - name: Set up Docker Buildx
               uses: docker/setup-buildx-action@v3
 
-            - name: Configure tags (with latest)
-              if: ${{ inputs.update_latest }}
-              run: echo "PRE_TAGS=mumble-server:latest mumble-server:${{ inputs.mumble_version }} mumble-server:${{ inputs.mumble_version }}-${{ inputs.docker_version }}" >> $GITHUB_ENV
+            - name: Configure tags (publish, with latest)
+              if: ${{ inputs.publish && inputs.update_latest }}
+              run: echo "TAGS=mumble-server:latest mumble-server:${{ inputs.mumble_version }} mumble-server:${{ inputs.mumble_version }}-${{ inputs.docker_version }}" >> $GITHUB_ENV
 
-            - name: Configure tags (without latest)
-              if: ${{ ! inputs.update_latest }}
-              run: echo "PRE_TAGS=mumble-server:${{ inputs.mumble_version }} mumble-server:${{ inputs.mumble_version }}-${{ inputs.docker_version }}" >> $GITHUB_ENV
+            - name: Configure tags (publish, without latest)
+              if: ${{ inputs.publish && ! inputs.update_latest }}
+              run: echo "TAGS=mumble-server:${{ inputs.mumble_version }} mumble-server:${{ inputs.mumble_version }}-${{ inputs.docker_version }}" >> $GITHUB_ENV
+
+            - name: Configure tags (CI build)
+              if: ${{ ! inputs.publish }}
+              run: echo "TAGS=mumble-server:sha-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
 
             - name: Create and push manifest
               run: |
                 TAG_ARGS=()
-                for current in $PRE_TAGS; do
-                  TAG_ARGS+=("-t" "fancy-mumble/$current" "-t" "ghcr.io/fancy-mumble/$current")
+                for tag in $TAGS; do
+                  TAG_ARGS+=("-t" "ghcr.io/fancy-mumble/$tag")
+                  if [[ "${{ inputs.publish }}" == "true" ]]; then
+                    TAG_ARGS+=("-t" "fancy-mumble/$tag")
+                  fi
                 done
                 DIGESTS=$(printf 'ghcr.io/fancy-mumble/mumble-server@sha256:%s ' $(ls /tmp/digests))
                 docker buildx imagetools create "${TAG_ARGS[@]}" $DIGESTS

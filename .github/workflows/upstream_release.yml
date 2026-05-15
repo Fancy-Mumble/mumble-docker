@@ -10,6 +10,7 @@ jobs:
         with:
             mumble_version: ${{ github.event.client_payload.tag }}
             docker_version: '0'
+            store: true
             publish: true
             update_latest: ${{ github.event.client_payload.is_latest == 'true' }}
         secrets: inherit
