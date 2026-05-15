@@ -144,7 +144,12 @@ jobs:
 
             - name: Configure tags (CI build)
               if: ${{ ! inputs.publish }}
-              run: echo "TAGS=mumble-server:sha-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+              run: |
+                TAGS="mumble-server:sha-${GITHUB_SHA:0:7}"
+                if [[ "${{ inputs.update_latest }}" == "true" ]]; then
+                  TAGS="mumble-server:latest $TAGS"
+                fi
+                echo "TAGS=$TAGS" >> $GITHUB_ENV
 
             - name: Create and push manifest
               run: |

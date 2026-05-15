@@ -12,5 +12,5 @@ jobs:
             docker_version: '0'
             store: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
             publish: false
-            update_latest: false
+            update_latest: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') }}
         secrets: inherit
