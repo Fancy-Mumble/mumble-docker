@@ -80,7 +80,7 @@ ARG MUMBLE_CMAKE_ARGS="-Dwebrtc-sfu=OFF"
 # Source repository / branch to build from.  Defaults to the Fancy Mumble
 # server fork.  Override with --build-arg MUMBLE_GIT_REPO=... /
 # MUMBLE_GIT_BRANCH=... to build from a different fork or upstream.
-ARG MUMBLE_GIT_REPO=https://github.com/SetZero/mumble-server
+ARG MUMBLE_GIT_REPO=https://github.com/Fancy-Mumble/mumble-server
 ARG MUMBLE_GIT_BRANCH=1.6.x
 ENV MUMBLE_GIT_REPO=${MUMBLE_GIT_REPO}
 ENV MUMBLE_GIT_BRANCH=${MUMBLE_GIT_BRANCH}
@@ -90,6 +90,10 @@ ENV MUMBLE_GIT_BRANCH=${MUMBLE_GIT_BRANCH}
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
   | sh -s -- -y --default-toolchain stable --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
+# Disable incremental compilation to significantly reduce disk usage during
+# multi-platform CI builds (each platform builds in parallel, and incremental
+# artifacts can exhaust the runner's available disk space).
+ENV CARGO_INCREMENTAL=0
 
 # Clone the repo, build it and finally copy the default server ini file. Since this file may be at different locations and Docker
 # doesn't support conditional copies, we have to ensure that regardless of where the file is located in the repo, it will end
@@ -104,7 +108,8 @@ RUN cd /mumble/repo/3rdparty/mumble-plugin-host \
     && strip target/release/libmumble_plugin_host.so \
     && mkdir -p lib include \
     && cp target/release/libmumble_plugin_host.so lib/libmumble_plugin_host.so \
-    && cp host/include/mumble_plugin_host.h include/mumble_plugin_host.h
+    && cp host/include/mumble_plugin_host.h include/mumble_plugin_host.h \
+    && rm -rf target ~/.cargo/registry ~/.cargo/git
 
 RUN /mumble/scripts/build.sh
 RUN /mumble/scripts/copy_one_of.sh ./scripts/murmur.ini ./auxiliary_files/mumble-server.ini default_config.ini
