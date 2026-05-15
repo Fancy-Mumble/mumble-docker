@@ -26,6 +26,8 @@ on:
 
 jobs:
     manual_dispatch:
+        permissions:
+            packages: write
         uses: ./.github/workflows/build_and_publish.yml
         with:
             mumble_version: ${{ github.event.inputs.mumble_version }}

@@ -6,6 +6,8 @@ on:
 
 jobs:
     publish_new_release:
+        permissions:
+            packages: write
         uses: ./.github/workflows/build_and_publish.yml
         with:
             mumble_version: ${{ github.event.client_payload.tag }}
