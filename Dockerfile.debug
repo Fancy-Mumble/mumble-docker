@@ -66,8 +66,14 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 ENV PATH="/root/.cargo/bin:${PATH}"
 COPY --from=mumble-src 3rdparty/mumble-plugin-host /plugin-host
 WORKDIR /plugin-host
-RUN cargo build --release -p mumble-plugin-host \
-    && patchelf --set-soname libmumble_plugin_host.so target/release/libmumble_plugin_host.so
+RUN cargo build --release \
+      -p mumble-plugin-host \
+      -p mumble-file-server \
+      -p mumble-live-doc \
+ && patchelf --set-soname libmumble_plugin_host.so target/release/libmumble_plugin_host.so \
+ && mkdir -p /plugin-host/plugins \
+ && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
+ && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/
 
 
 FROM base AS build
@@ -160,9 +166,16 @@ COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
 # Installed under the multiarch lib dir so the dynamic linker finds it via DT_NEEDED.
 COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so \
     /usr/lib/x86_64-linux-gnu/libmumble_plugin_host.so
+# Built-in dynamic plugins (file-server, live-doc) - loaded at runtime via
+# MUMBLE_PLUGIN_DIRS.  Operators may drop additional plugins into the mounted
+# /etc/mumble/plugins directory.
+COPY --from=plugin-host-build /plugin-host/plugins/ /usr/lib/mumble-server/plugins/
 COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
 
-RUN mkdir -p /data && chown -R mumble:mumble /data && chown -R mumble:mumble /etc/mumble
+RUN mkdir -p /data /etc/mumble/plugins \
+ && chown -R mumble:mumble /data \
+ && chown -R mumble:mumble /etc/mumble
+ENV MUMBLE_PLUGIN_DIRS="/usr/lib/mumble-server/plugins:/etc/mumble/plugins"
 EXPOSE 64738/tcp 64738/udp 64739/tcp 10000/udp
 COPY entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

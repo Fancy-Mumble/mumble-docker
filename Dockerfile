@@ -103,12 +103,21 @@ RUN /mumble/scripts/clone.sh
 # Build the Rust mumble-plugin-host cdylib and publish the artefacts at the
 # paths the C++ build expects (CMake otherwise warns and the linker fails
 # with undefined references to plugin_host_create / plugin_host_destroy / ...).
+# Also build the bundled dynamic plugins (file-server, live-doc) as cdylibs
+# that the host will dlopen at runtime from the configured plugins dir.
 RUN cd /mumble/repo/3rdparty/mumble-plugin-host \
-    && cargo build --release -p mumble-plugin-host \
+    && cargo build --release \
+        -p mumble-plugin-host \
+        -p mumble-file-server \
+        -p mumble-live-doc \
     && strip target/release/libmumble_plugin_host.so \
-    && mkdir -p lib include \
+    && strip target/release/libmumble_file_server.so \
+    && strip target/release/libmumble_live_doc.so \
+    && mkdir -p lib include plugins \
     && cp target/release/libmumble_plugin_host.so lib/libmumble_plugin_host.so \
     && cp host/include/mumble_plugin_host.h include/mumble_plugin_host.h \
+    && cp target/release/libmumble_file_server.so plugins/ \
+    && cp target/release/libmumble_live_doc.so plugins/ \
     && rm -rf target ~/.cargo/registry ~/.cargo/git
 
 RUN /mumble/scripts/build.sh
@@ -141,6 +150,10 @@ COPY --from=build /mumble/repo/build/src/murmur/fcm/libmumble_push_fcm.so* /usr/
 COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
 # mumble-plugin-host Rust cdylib - dlopen'd at runtime by mumble-server.
 COPY --from=build /mumble/repo/3rdparty/mumble-plugin-host/lib/libmumble_plugin_host.so /usr/lib/
+# Bundled dynamic plugins (file-server, live-doc) the host loads on startup.
+# Operators can drop additional .so files into /etc/mumble/plugins (mountable)
+# without rebuilding the image; see MUMBLE_PLUGIN_DIRS below.
+COPY --from=build /mumble/repo/3rdparty/mumble-plugin-host/plugins/ /usr/lib/mumble-server/plugins/
 COPY --from=build /mumble/repo/default_config.ini /etc/mumble/bare_config.ini
 COPY --from=build --chmod=755 /mumble/repo/su-exec/su-exec /usr/local/bin/su-exec
 
@@ -148,7 +161,14 @@ COPY --from=build --chmod=755 /mumble/repo/su-exec/su-exec /usr/local/bin/su-exe
 EXPOSE 64738/tcp 64738/udp 64739/tcp 64740/tcp 10000/udp
 COPY entrypoint.sh /entrypoint.sh
 
-VOLUME ["/data"]
+# Plugin discovery: the host scans every directory listed in
+# MUMBLE_PLUGIN_DIRS (':'-separated) in addition to the `plugins_dir`
+# server config key. `/etc/mumble/plugins` is empty by default and exists
+# as a mount point for operator-supplied .so plugins.
+ENV MUMBLE_PLUGIN_DIRS="/usr/lib/mumble-server/plugins:/etc/mumble/plugins"
+RUN mkdir -p /etc/mumble/plugins
+
+VOLUME ["/data", "/etc/mumble/plugins"]
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["/usr/bin/mumble-server"]
 
