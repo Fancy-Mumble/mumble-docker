@@ -154,6 +154,8 @@ COPY --from=build /mumble/repo/3rdparty/mumble-plugin-host/lib/libmumble_plugin_
 # Operators can drop additional .so files into /etc/mumble/plugins (mountable)
 # without rebuilding the image; see MUMBLE_PLUGIN_DIRS below.
 COPY --from=build /mumble/repo/3rdparty/mumble-plugin-host/plugins/ /usr/lib/mumble-server/plugins/
+# Third-party plugins downloaded from GitHub Releases.
+COPY --from=plugin-fetch /plugins/ /usr/lib/mumble-server/plugins/
 COPY --from=build /mumble/repo/default_config.ini /etc/mumble/bare_config.ini
 COPY --from=build --chmod=755 /mumble/repo/su-exec/su-exec /usr/local/bin/su-exec
 

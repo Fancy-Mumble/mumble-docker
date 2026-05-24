@@ -70,6 +70,30 @@ RUN cargo build --release \
  && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
  && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/
 
+
+# ------------------------------------------------------------------
+# Download the fancy-greeter plugin from GitHub Releases.
+# Supports linux/amd64 and linux/arm64; other architectures skip
+# silently (the plugins directory will just be empty for them).
+# Override FANCY_PLUGIN_VERSION at build time to pin a specific release.
+# ------------------------------------------------------------------
+FROM ubuntu:24.04 AS plugin-fetch
+ARG TARGETARCH
+ARG FANCY_PLUGIN_VERSION=v0.2.0
+RUN apt-get update && apt-get install --no-install-recommends -y curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /plugins \
+  && case "${TARGETARCH}" in \
+       amd64) ARCHIVE="fancy-greeter-linux-x86_64.tar.gz" ;; \
+       arm64) ARCHIVE="fancy-greeter-linux-aarch64.tar.gz" ;; \
+       *)     echo "No fancy-greeter build for arch '${TARGETARCH}', skipping."; ARCHIVE="" ;; \
+     esac \
+  && if [ -n "${ARCHIVE}" ]; then \
+       curl -fsSL "https://github.com/Fancy-Mumble/fancy-plugin-example/releases/download/${FANCY_PLUGIN_VERSION}/${ARCHIVE}" \
+         | tar -xz -C /plugins; \
+     fi
+
+
 FROM base AS build
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -169,6 +193,8 @@ COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.
 # MUMBLE_PLUGIN_DIRS.  Operators can drop additional plugins into the mounted
 # /etc/mumble/plugins directory.
 COPY --from=plugin-host-build /plugin-host/plugins/ /usr/lib/mumble-server/plugins/
+# Third-party plugins downloaded from GitHub Releases.
+COPY --from=plugin-fetch /plugins/ /usr/lib/mumble-server/plugins/
 COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
 
 RUN mkdir -p /data /etc/mumble/plugins \
