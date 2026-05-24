@@ -148,6 +148,38 @@ plugin.file-server.tlsTerminatedByProxy=true
 ; plugin.file-server.baseUrl=
 
 ; --------------------------------------------------------------------------
+; Live collaborative documents (Fancy Mumble 0.3.2+)
+;
+; The bundled mumble-live-doc plugin provides real-time collaborative
+; documents over WebSocket using the Yjs CRDT protocol.  Clients send a
+; FancyLiveDocOpen message (wire ID 141); the server replies with a
+; FancyLiveDocInvite containing a short-lived JWT and WebSocket URL, then
+; broadcasts a FancyLiveDocAnnounce to the rest of the channel.
+;
+; Without `enabled=true` AND a writable `state_path`, the plugin no-ops
+; and clients will surface a timeout error after opening a document.
+;
+; enabled         - Master toggle.  Default: false.
+; state_path      - Required absolute path for JWT signing key and room
+;                   state.  The plugin refuses to start without this.
+; host            - WebSocket listener bind address.  Default: 0.0.0.0.
+; port            - WebSocket listener TCP port.  Default: 64740.
+; public_url      - Base URL clients use to reach the WS endpoint.
+;                   Required when terminated by a reverse proxy (e.g.
+;                   "wss://chat.example.com/live-doc").
+; --------------------------------------------------------------------------
+; plugin.live-doc.enabled=false
+plugin.live-doc.state_path=/data/live-doc-state
+; plugin.live-doc.host=0.0.0.0
+plugin.live-doc.port=64740
+; plugin.live-doc.public_url=
+; plugin.live-doc.max_update_bytes=4194304
+; plugin.live-doc.snapshot_idle_secs=60
+; plugin.live-doc.teardown_grace_secs=30
+; plugin.live-doc.file_server_url=http://127.0.0.1:64739
+; plugin.live-doc.file_server_admin_token=
+
+; --------------------------------------------------------------------------
 ; Ice RPC (must be last section)
 ; --------------------------------------------------------------------------
 [Ice]

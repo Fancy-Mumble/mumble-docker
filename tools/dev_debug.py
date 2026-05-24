@@ -32,6 +32,7 @@ DEFAULTS = {
     "MUMBLE_DATA_VOLUME":     "mumble-data-debug",
     "MUMBLE_PORT":            "64738",
     "MUMBLE_FILESERVER_PORT": "64739",
+    "MUMBLE_LIVEDOC_PORT":    "64740",
     "MUMBLE_SFU_PORT":        "10000",
     "MUMBLE_UID":             "1000",
     "MUMBLE_GID":             "1000",
@@ -153,6 +154,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"chown -R {uid_gid} /data/file-server-storage && "
         "chmod 775 /data/file-server-storage")
 
+    # Ensure live-doc state dir exists with correct ownership.
+    _sh(env, image,
+        "mkdir -p /data/live-doc-state && "
+        f"chown -R {uid_gid} /data/live-doc-state && "
+        "chmod 775 /data/live-doc-state")
+
     # Final pre-flight permission fix-up.
     _sh(env, image,
         f"test -f /data/mumble-server.sqlite && chown {uid_gid} /data/mumble-server.sqlite || true; "
@@ -178,6 +185,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "-p", f"{env['MUMBLE_PORT']}:64738/tcp",
         "-p", f"{env['MUMBLE_PORT']}:64738/udp",
         "-p", f"{env['MUMBLE_FILESERVER_PORT']}:64739/tcp",
+        "-p", f"{env['MUMBLE_LIVEDOC_PORT']}:64740/tcp",
         "-p", f"{env['MUMBLE_SFU_PORT']}:10000/udp",
         "-e", "RUST_LOG=mumble_file_server=debug,mumble_plugin_host=debug,info",
         "-e", "MUMBLE_PLUGIN_LOG=mumble_file_server=debug,mumble_plugin_host=debug,info",

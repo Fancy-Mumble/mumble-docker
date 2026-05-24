@@ -25,6 +25,7 @@ DEFAULTS = {
     "MUMBLE_DATA_VOLUME":     "mumble-data",
     "MUMBLE_PORT":            "64738",
     "MUMBLE_FILESERVER_PORT": "64739",
+    "MUMBLE_LIVEDOC_PORT":    "64740",
     "MUMBLE_SFU_PORT":        "10000",
 }
 
@@ -65,6 +66,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "-p", f"{env['MUMBLE_PORT']}:64738/tcp",
         "-p", f"{env['MUMBLE_PORT']}:64738/udp",
         "-p", f"{env['MUMBLE_FILESERVER_PORT']}:64739/tcp",
+        "-p", f"{env['MUMBLE_LIVEDOC_PORT']}:64740/tcp",
         "-p", f"{env['MUMBLE_SFU_PORT']}:10000/udp",
     ]
     run_args += c.standard_mounts(env)

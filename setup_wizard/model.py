@@ -157,10 +157,12 @@ def write_env(path: Path, values: dict[str, str]) -> None:
 
 # MUMBLE_CONFIG_* env var name  →  canonical .ini key
 INI_KEY_FOR_ENV: dict[str, str] = {
-    "MUMBLE_CONFIG_PLUGIN_FILE_SERVER_ENABLED": "plugin.file-server.enabled",
+    "MUMBLE_CONFIG_PLUGIN_FILE_SERVER_ENABLED":  "plugin.file-server.enabled",
     "MUMBLE_CONFIG_PUSHENABLED":                 "pushenabled",
     "MUMBLE_CONFIG_WEBRTCSFUENABLED":            "webrtcsfuenabled",
     "MUMBLE_CONFIG_WEBRTCSFUPUBLICIP":           "webrtcsfupublicip",
+    "MUMBLE_CONFIG_PLUGIN_LIVE_DOC_ENABLED":     "plugin.live-doc.enabled",
+    "MUMBLE_CONFIG_PLUGIN_LIVE_DOC_PUBLIC_URL":  "plugin.live-doc.public_url",
 }
 
 
@@ -294,6 +296,16 @@ def build_sections(existing: dict[str, str]) -> list[Section]:
                                   "SFU UDP port can stay closed.",
                         validator=validate_bool,
                         skip_if_empty=False),
+                Setting("MUMBLE_CONFIG_PLUGIN_LIVE_DOC_ENABLED",
+                        "Live collaborative documents",
+                        kind="bool",
+                        default=d("MUMBLE_CONFIG_PLUGIN_LIVE_DOC_ENABLED", "false"),
+                        help_text="Bundled Yjs/WebSocket plugin for real-time "
+                                  "document co-editing (Fancy Mumble 0.3.2+).  "
+                                  "When disabled, clients cannot open shared "
+                                  "documents and the live-doc port can stay closed.",
+                        validator=validate_bool,
+                        skip_if_empty=False),
                 Setting("MUMBLE_CONFIG_WEBRTCSFUPUBLICIP",
                         "WebRTC SFU public IP",
                         default=d("MUMBLE_CONFIG_WEBRTCSFUPUBLICIP", "127.0.0.1"),
@@ -323,6 +335,11 @@ def build_sections(existing: dict[str, str]) -> list[Section]:
                         default=d("MUMBLE_SFU_PORT", "10000"),
                         validator=validate_port,
                         depends_on=("MUMBLE_CONFIG_WEBRTCSFUENABLED", "true")),
+                Setting("MUMBLE_LIVEDOC_PORT",
+                        "Live-doc WebSocket port (TCP)",
+                        default=d("MUMBLE_LIVEDOC_PORT", "64740"),
+                        validator=validate_port,
+                        depends_on=("MUMBLE_CONFIG_PLUGIN_LIVE_DOC_ENABLED", "true")),
             ],
         ),
         Section(
@@ -395,6 +412,25 @@ def build_sections(existing: dict[str, str]) -> list[Section]:
                         default=d("MUMBLE_GIT_REPO", "https://github.com/SetZero/mumble-server")),
                 Setting("MUMBLE_GIT_BRANCH", "Server source branch",
                         default=d("MUMBLE_GIT_BRANCH", "1.6.x")),
+            ],
+        ),
+        Section(
+            "Live collaborative documents",
+            "Advanced options for the live-doc WebSocket plugin.\n"
+            "Only visible when live-doc is enabled in the features step.\n"
+            "\n"
+            "The plugin stores a JWT signing key and transient CRDT room "
+            "state under state_path.  The directory must be writable by "
+            "the container user.",
+            [
+                Setting("MUMBLE_CONFIG_PLUGIN_LIVE_DOC_PUBLIC_URL",
+                        "Live-doc public WebSocket URL",
+                        default=d("MUMBLE_CONFIG_PLUGIN_LIVE_DOC_PUBLIC_URL"),
+                        help_text="Base URL clients use to reach the WS endpoint, "
+                                  "e.g. 'wss://chat.example.com/live-doc'.  Leave "
+                                  "blank when clients connect directly "
+                                  "(no reverse proxy).",
+                        depends_on=("MUMBLE_CONFIG_PLUGIN_LIVE_DOC_ENABLED", "true")),
             ],
         ),
         Section(
