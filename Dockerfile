@@ -37,6 +37,57 @@ RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/s
 
 
 
+# Clone the mumble-server source tree (shared by plugin-host-build, sfu-build,
+# and the C++ build stage so the clone happens exactly once).
+FROM ubuntu:24.04 AS mumble-src
+ARG DEBIAN_FRONTEND=noninteractive
+
+ADD ./scripts/* /mumble/scripts/
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  ca-certificates curl git \
+  && rm -rf /var/lib/apt/lists/*
+
+ARG MUMBLE_VERSION=latest
+# Source repository / branch to build from.  Defaults to the Fancy Mumble
+# server fork.  Override with --build-arg MUMBLE_GIT_REPO=... /
+# MUMBLE_GIT_BRANCH=... to build from a different fork or upstream.
+ARG MUMBLE_GIT_REPO=https://github.com/Fancy-Mumble/mumble-server
+ARG MUMBLE_GIT_BRANCH=1.6.x
+ENV MUMBLE_GIT_REPO=${MUMBLE_GIT_REPO}
+ENV MUMBLE_GIT_BRANCH=${MUMBLE_GIT_BRANCH}
+
+WORKDIR /mumble/scripts
+RUN /mumble/scripts/clone.sh
+
+
+# Build the Rust mumble-plugin-host cdylib and the bundled dynamic plugins
+# (file-server, live-doc) in isolation so the Rust toolchain is not needed
+# inside the C++ build stage.
+FROM ubuntu:24.04 AS plugin-host-build
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  curl ca-certificates build-essential pkg-config libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+# Disable incremental compilation to significantly reduce disk usage during
+# multi-platform CI builds (each platform builds in parallel, and incremental
+# artifacts can exhaust the runner's available disk space).
+ENV CARGO_INCREMENTAL=0
+COPY --from=mumble-src /mumble/repo/3rdparty/mumble-plugin-host /plugin-host
+WORKDIR /plugin-host
+RUN cargo build --release \
+      -p mumble-plugin-host \
+      -p mumble-file-server \
+      -p mumble-live-doc \
+ && strip target/release/libmumble_plugin_host.so \
+          target/release/libmumble_file_server.so \
+          target/release/libmumble_live_doc.so \
+ && mkdir -p /plugin-host/plugins \
+ && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
+ && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/
+
+
 FROM base AS build
 ARG DEBIAN_FRONTEND=noninteractive
 
@@ -77,48 +128,16 @@ ARG MUMBLE_VERSION=latest
 ARG MUMBLE_BUILD_NUMBER=""
 ARG MUMBLE_CMAKE_ARGS="-Dwebrtc-sfu=OFF"
 
-# Source repository / branch to build from.  Defaults to the Fancy Mumble
-# server fork.  Override with --build-arg MUMBLE_GIT_REPO=... /
-# MUMBLE_GIT_BRANCH=... to build from a different fork or upstream.
-ARG MUMBLE_GIT_REPO=https://github.com/Fancy-Mumble/mumble-server
-ARG MUMBLE_GIT_BRANCH=1.6.x
-ENV MUMBLE_GIT_REPO=${MUMBLE_GIT_REPO}
-ENV MUMBLE_GIT_BRANCH=${MUMBLE_GIT_BRANCH}
+# Copy the cloned source from the mumble-src stage.
+COPY --from=mumble-src /mumble/repo /mumble/repo
 
-# Install Rust toolchain (used to build the mumble-plugin-host cdylib and
-# the WebRTC SFU module from the cloned source tree).
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-  | sh -s -- -y --default-toolchain stable --profile minimal
-ENV PATH="/root/.cargo/bin:${PATH}"
-# Disable incremental compilation to significantly reduce disk usage during
-# multi-platform CI builds (each platform builds in parallel, and incremental
-# artifacts can exhaust the runner's available disk space).
-ENV CARGO_INCREMENTAL=0
-
-# Clone the repo, build it and finally copy the default server ini file. Since this file may be at different locations and Docker
-# doesn't support conditional copies, we have to ensure that regardless of where the file is located in the repo, it will end
-# up at a unique path in our build container to be copied further down.
-RUN /mumble/scripts/clone.sh
-
-# Build the Rust mumble-plugin-host cdylib and publish the artefacts at the
-# paths the C++ build expects (CMake otherwise warns and the linker fails
-# with undefined references to plugin_host_create / plugin_host_destroy / ...).
-# Also build the bundled dynamic plugins (file-server, live-doc) as cdylibs
-# that the host will dlopen at runtime from the configured plugins dir.
-RUN cd /mumble/repo/3rdparty/mumble-plugin-host \
-    && cargo build --release \
-        -p mumble-plugin-host \
-        -p mumble-file-server \
-        -p mumble-live-doc \
-    && strip target/release/libmumble_plugin_host.so \
-    && strip target/release/libmumble_file_server.so \
-    && strip target/release/libmumble_live_doc.so \
-    && mkdir -p lib include plugins \
-    && cp target/release/libmumble_plugin_host.so lib/libmumble_plugin_host.so \
-    && cp host/include/mumble_plugin_host.h include/mumble_plugin_host.h \
-    && cp target/release/libmumble_file_server.so plugins/ \
-    && cp target/release/libmumble_live_doc.so plugins/ \
-    && rm -rf target ~/.cargo/registry ~/.cargo/git
+# Drop the prebuilt plugin-host artefacts where CMake expects them so the
+# C++ link step can resolve the cdylib symbols.
+RUN mkdir -p 3rdparty/mumble-plugin-host/lib 3rdparty/mumble-plugin-host/include
+COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so \
+    /mumble/repo/3rdparty/mumble-plugin-host/lib/libmumble_plugin_host.so
+COPY --from=plugin-host-build /plugin-host/host/include/mumble_plugin_host.h \
+    /mumble/repo/3rdparty/mumble-plugin-host/include/mumble_plugin_host.h
 
 RUN /mumble/scripts/build.sh
 RUN /mumble/scripts/copy_one_of.sh ./scripts/murmur.ini ./auxiliary_files/mumble-server.ini default_config.ini
@@ -157,7 +176,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   && rm -rf /var/lib/apt/lists/*
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
-COPY --from=build /mumble/repo/3rdparty/webrtc-sfu /sfu
+COPY --from=mumble-src /mumble/repo/3rdparty/webrtc-sfu /sfu
 WORKDIR /sfu
 RUN cargo build --release && strip target/release/libwebrtc_sfu.so
 
@@ -171,11 +190,11 @@ COPY --from=build /mumble/repo/build/src/murmur/fcm/libmumble_push_fcm.so* /usr/
 # WebRTC SFU Rust module - built in the sfu-build stage.
 COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
 # mumble-plugin-host Rust cdylib - dlopen'd at runtime by mumble-server.
-COPY --from=build /mumble/repo/3rdparty/mumble-plugin-host/lib/libmumble_plugin_host.so /usr/lib/
+COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so /usr/lib/
 # Bundled dynamic plugins (file-server, live-doc) the host loads on startup.
 # Operators can drop additional .so files into /etc/mumble/plugins (mountable)
 # without rebuilding the image; see MUMBLE_PLUGIN_DIRS below.
-COPY --from=build /mumble/repo/3rdparty/mumble-plugin-host/plugins/ /usr/lib/mumble-server/plugins/
+COPY --from=plugin-host-build /plugin-host/plugins/ /usr/lib/mumble-server/plugins/
 # Third-party plugins downloaded from GitHub Releases.
 COPY --from=plugin-fetch /plugins/ /usr/lib/mumble-server/plugins/
 COPY --from=build /mumble/repo/default_config.ini /etc/mumble/bare_config.ini
