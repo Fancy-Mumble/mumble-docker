@@ -127,6 +127,28 @@ RUN git clone https://github.com/ncopa/su-exec.git /mumble/repo/su-exec \
     && cd /mumble/repo/su-exec && make
 
 
+# Download the fancy-greeter plugin from GitHub Releases.
+# Supports linux/amd64 and linux/arm64; other architectures skip
+# silently (the plugins directory will just be empty for them).
+# Override FANCY_PLUGIN_VERSION at build time to pin a specific release.
+# ------------------------------------------------------------------
+FROM ubuntu:24.04 AS plugin-fetch
+ARG TARGETARCH
+ARG FANCY_PLUGIN_VERSION=v0.2.0
+RUN apt-get update && apt-get install --no-install-recommends -y curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /plugins \
+  && case "${TARGETARCH}" in \
+       amd64) ARCHIVE="fancy-greeter-linux-x86_64.tar.gz" ;; \
+       arm64) ARCHIVE="fancy-greeter-linux-aarch64.tar.gz" ;; \
+       *)     echo "No fancy-greeter build for arch '${TARGETARCH}', skipping."; ARCHIVE="" ;; \
+     esac \
+  && if [ -n "${ARCHIVE}" ]; then \
+       curl -fsSL "https://github.com/Fancy-Mumble/fancy-plugin-example/releases/download/${FANCY_PLUGIN_VERSION}/${ARCHIVE}" \
+         | tar -xz -C /plugins; \
+     fi
+
+
 # Build the Rust WebRTC SFU shared library in its own stage.
 FROM ubuntu:24.04 AS sfu-build
 ARG DEBIAN_FRONTEND=noninteractive
