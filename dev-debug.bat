@@ -8,7 +8,7 @@ REM   --clean   Prune the BuildKit CMake cache (full rebuild)
 setlocal
 
 set DOCKER_BUILDKIT=1
-if not defined MUMBLE_SRC set MUMBLE_SRC=C:\Users\Sebastian\Documents\Projects\Mumble\mumble-server
+if not defined MUMBLE_SRC set MUMBLE_SRC=F:\Dokumente\projekte\mumble_server\mumble-server
 set MUMBLE_UID=1000
 set MUMBLE_GID=1000
 set SCRIPT_DIR=%~dp0

@@ -66,8 +66,37 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 ENV PATH="/root/.cargo/bin:${PATH}"
 COPY --from=mumble-src 3rdparty/mumble-plugin-host /plugin-host
 WORKDIR /plugin-host
-RUN cargo build --release -p mumble-plugin-host \
-    && patchelf --set-soname libmumble_plugin_host.so target/release/libmumble_plugin_host.so
+RUN cargo build --release \
+      -p mumble-plugin-host \
+      -p mumble-file-server \
+      -p mumble-live-doc \
+ && patchelf --set-soname libmumble_plugin_host.so target/release/libmumble_plugin_host.so \
+ && mkdir -p /plugin-host/plugins \
+ && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
+ && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/
+
+
+# ------------------------------------------------------------------
+# Download the fancy-greeter plugin from GitHub Releases.
+# Supports linux/amd64 and linux/arm64; other architectures skip
+# silently (the plugins directory will just be empty for them).
+# Override FANCY_PLUGIN_VERSION at build time to pin a specific release.
+# ------------------------------------------------------------------
+FROM ubuntu:24.04 AS plugin-fetch
+ARG TARGETARCH
+ARG FANCY_PLUGIN_VERSION=v0.2.0
+RUN apt-get update && apt-get install --no-install-recommends -y curl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /plugins \
+  && case "${TARGETARCH}" in \
+       amd64) ARCHIVE="fancy-greeter-linux-x86_64.tar.gz" ;; \
+       arm64) ARCHIVE="fancy-greeter-linux-aarch64.tar.gz" ;; \
+       *)     echo "No fancy-greeter build for arch '${TARGETARCH}', skipping."; ARCHIVE="" ;; \
+     esac \
+  && if [ -n "${ARCHIVE}" ]; then \
+       curl -fsSL "https://github.com/Fancy-Mumble/fancy-plugin-example/releases/download/${FANCY_PLUGIN_VERSION}/${ARCHIVE}" \
+         | tar -xz -C /plugins; \
+     fi
 
 
 FROM base AS build
@@ -150,7 +179,7 @@ RUN getent group $MUMBLE_GID && groupdel $(getent group $MUMBLE_GID | cut -d: -f
   && groupadd --gid $MUMBLE_GID mumble \
   && useradd --uid $MUMBLE_UID --gid $MUMBLE_GID mumble
 
-# Do NOT strip — keep debug symbols in the binary.
+# Do NOT strip - keep debug symbols in the binary.
 COPY --from=build /mumble/mumble-server /usr/bin/mumble-server
 # FCM push module is optional - only copied if built.
 COPY --from=build /mumble/libmumble_push_fcm.so* /usr/bin/
@@ -160,9 +189,18 @@ COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
 # Installed under the multiarch lib dir so the dynamic linker finds it via DT_NEEDED.
 COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so \
     /usr/lib/x86_64-linux-gnu/libmumble_plugin_host.so
+# Built-in dynamic plugins (file-server, live-doc) - loaded at runtime via
+# MUMBLE_PLUGIN_DIRS.  Operators may drop additional plugins into the mounted
+# /etc/mumble/plugins directory.
+COPY --from=plugin-host-build /plugin-host/plugins/ /usr/lib/mumble-server/plugins/
+# Third-party plugins downloaded from GitHub Releases.
+COPY --from=plugin-fetch /plugins/ /usr/lib/mumble-server/plugins/
 COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
 
-RUN mkdir -p /data && chown -R mumble:mumble /data && chown -R mumble:mumble /etc/mumble
+RUN mkdir -p /data /etc/mumble/plugins \
+ && chown -R mumble:mumble /data \
+ && chown -R mumble:mumble /etc/mumble
+ENV MUMBLE_PLUGIN_DIRS="/usr/lib/mumble-server/plugins:/etc/mumble/plugins"
 EXPOSE 64738/tcp 64738/udp 64739/tcp 10000/udp
 COPY entrypoint.sh /entrypoint.sh
 ENTRYPOINT ["/entrypoint.sh"]

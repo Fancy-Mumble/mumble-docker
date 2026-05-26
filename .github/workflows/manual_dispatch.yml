@@ -15,6 +15,10 @@ on:
                 description: "Whether the built image(s) shall be published to Dockerhub"
                 required: true
                 default: "false"
+            store:
+                description: "Whether to push a sha-tagged image to GHCR"
+                required: true
+                default: "false"
             update_latest:
                 description: "Whether to update the 'latest' tag on Dockerhub"
                 required: true
@@ -22,11 +26,13 @@ on:
 
 jobs:
     manual_dispatch:
+        permissions:
+            packages: write
         uses: ./.github/workflows/build_and_publish.yml
         with:
             mumble_version: ${{ github.event.inputs.mumble_version }}
             docker_version: ${{ github.event.inputs.docker_version }}
+            store: ${{ github.event.inputs.store == 'true' || github.event.inputs.publish == 'true' }}
             publish: ${{ github.event.inputs.publish == 'true' }}
             update_latest: ${{ github.event.inputs.update_latest == 'true' }}
-            platforms: "linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v8"
         secrets: inherit

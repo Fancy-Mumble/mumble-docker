@@ -1,0 +1,12 @@
+# Optional dependencies for the setup wizard.
+#
+# The CLI / TUI version of the wizard is pure stdlib and needs nothing
+# from this file.  The GUI version (`python -m setup_wizard --gui`)
+# requires DearPyGui:
+#
+#     python -m pip install -r setup_wizard/requirements.txt
+#
+# Pin to a known-good major version; DearPyGui follows semver and the
+# 1.x line is API-stable.
+
+dearpygui>=1.10,<2

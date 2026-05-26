@@ -6,11 +6,13 @@ on:
 
 jobs:
     publish_new_release:
+        permissions:
+            packages: write
         uses: ./.github/workflows/build_and_publish.yml
         with:
             mumble_version: ${{ github.event.client_payload.tag }}
             docker_version: '0'
+            store: true
             publish: true
             update_latest: ${{ github.event.client_payload.is_latest == 'true' }}
-            platforms: "linux/amd64,linux/arm64,linux/arm/v7,linux/arm/v8"
         secrets: inherit

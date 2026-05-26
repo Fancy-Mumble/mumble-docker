@@ -19,6 +19,43 @@ readonly SENSITIVE_CONFIGS=(
 	"sslPassPhrase"
 )
 
+# ---------------------------------------------------------------------------
+# FCM credentials - resolved before config is written so the decoded path can
+# be injected into pushcredentialspath.  Three sources are checked in order:
+#
+#   1. Docker / Podman secret   /run/secrets/MUMBLE_FCM_CREDENTIALS
+#        (preferred for production - credentials never touch the filesystem
+#        outside the container and are never part of any image layer)
+#
+#   2. Base64 env var            MUMBLE_FCM_CREDENTIALS_BASE64
+#        (good for CI / Kubernetes - base64-encode the JSON and pass it in)
+#
+#   3. Legacy file mount         leave pushcredentialspath in your ini / config
+#        (still works but requires a host file path)
+#
+# When source 1 or 2 is used the JSON is written to a tmpfs path
+# (/tmp/fcm-credentials.json) and pushcredentialspath is set automatically.
+# ---------------------------------------------------------------------------
+_FCM_CREDS_RUNTIME="/tmp/fcm-credentials.json"
+
+if [[ -f /run/secrets/MUMBLE_FCM_CREDENTIALS ]]; then
+	echo "Reading FCM credentials from container secret"
+	cp /run/secrets/MUMBLE_FCM_CREDENTIALS "$_FCM_CREDS_RUNTIME"
+	chmod 600 "$_FCM_CREDS_RUNTIME"
+elif [[ -n "${MUMBLE_FCM_CREDENTIALS_BASE64:-}" ]]; then
+	echo "Decoding FCM credentials from MUMBLE_FCM_CREDENTIALS_BASE64"
+	if ! printf '%s' "$MUMBLE_FCM_CREDENTIALS_BASE64" | base64 -d > "$_FCM_CREDS_RUNTIME" 2>/dev/null; then
+		>&2 echo "[ERROR] Failed to decode MUMBLE_FCM_CREDENTIALS_BASE64 - is it valid base64?"
+		exit 1
+	fi
+	chmod 600 "$_FCM_CREDS_RUNTIME"
+fi
+
+# Ensure the mumble user can read the decoded file when we drop privileges.
+if [[ -f "$_FCM_CREDS_RUNTIME" ]] && [[ "$(id -u)" = "0" ]]; then
+	chown "${PUID}:${PGID}" "$_FCM_CREDS_RUNTIME" 2>/dev/null || true
+fi
+
 # Compile list of configuration options from the bare-bones config
 readarray -t existing_config_options < <(sed -En "s/$CONFIG_REGEX/\2/p" "$BARE_BONES_CONFIG_FILE")
 
@@ -179,6 +216,12 @@ else
 		set_config "database" "${DATA_DIR}/mumble-server.sqlite" true
 	fi
 
+	# When FCM credentials were decoded from an env var or secret, auto-set
+	# pushcredentialspath so the user doesn't have to configure it manually.
+	if [[ -f "$_FCM_CREDS_RUNTIME" ]]; then
+		set_config "pushcredentialspath" "$_FCM_CREDS_RUNTIME" true
+	fi
+
 	set_config "ice" "\"tcp -h 127.0.0.1 -p 6502\"" true
 
 	if ! array_contains "used_configs" "welcometextfile"; then
@@ -207,17 +250,23 @@ if [[ -f /run/secrets/MUMBLE_SUPERUSER_PASSWORD ]]; then
 	echo "Read superuser password from container secret"
 fi
 
-if [[ -n "${MUMBLE_SUPERUSER_PASSWORD}" ]]; then
-	#Variable to change the superuser password
-	"${server_invocation[@]}" "$( normalize_cli_arg "--set-su-pw" )" "$MUMBLE_SUPERUSER_PASSWORD"
-	echo "Successfully configured superuser password"
-fi
-
-# Set privileges for /app but only if pid 1 user is root and we are dropping privileges.
-# If container is run as an unprivileged user, it means owner already handled ownership setup on their own.
-# Running chown in that case (as non-root) will cause error
+# Set privileges for /data BEFORE the password-setting call so we can drop
+# privileges for that call too. Running --set-su-pw as root would otherwise
+# emit a flurry of "running murmurd as root", "Failed to set initial/final
+# capabilities", and "Failed to set priority limits" warnings, even though
+# the long-running server itself runs unprivileged via su-exec below.
 if [[ "$(id -u)" = "0" ]] && [[ "${PUID}" != "0" ]] && [[ "${MUMBLE_CHOWN_DATA}" = true ]]; then
 	chown -R ${PUID}:${PGID} /data
+fi
+
+if [[ -n "${MUMBLE_SUPERUSER_PASSWORD}" ]]; then
+	#Variable to change the superuser password
+	if [[ "$(id -u)" = "0" ]] && [[ "${PUID}" != "0" ]]; then
+		su-exec ${PUID}:${PGID} "${server_invocation[@]}" "$( normalize_cli_arg "--set-su-pw" )" "$MUMBLE_SUPERUSER_PASSWORD"
+	else
+		"${server_invocation[@]}" "$( normalize_cli_arg "--set-su-pw" )" "$MUMBLE_SUPERUSER_PASSWORD"
+	fi
+	echo "Successfully configured superuser password"
 fi
 
 # Show /data permissions, in case the user needs to match the mount point access
