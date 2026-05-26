@@ -66,6 +66,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     c.require_docker()
     env = c.env_with_defaults(DEFAULTS)
     src = c.require_path(env, "MUMBLE_SRC")
+    fancy_src = c.resolve_fancy_plugins_src(env, src)
 
     seed_default = c.REPO_ROOT / "db" / "murmur.sqlite"
     seed = c.host_path(env.get("MUMBLE_SEED_DB")) or seed_default
@@ -83,6 +84,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "-f", str(c.REPO_ROOT / "Dockerfile.debug"),
         "-t", image,
         "--build-context", f"mumble-src={src}",
+        "--build-context", f"fancy-plugins-src={fancy_src}",
         str(c.REPO_ROOT),
     ])
 
@@ -130,7 +132,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         _sh(env, image,
             f"chown {uid_gid} /data/mumble-server.sqlite && "
             "chmod 664 /data/mumble-server.sqlite && chmod 775 /data && "
-            "rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm")
+            "rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm "
+            "/data/mumble-server.sqlite-journal")
     else:
         c.info(f"(no seed DB at {seed} - skipping)")
 
@@ -165,7 +168,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"test -f /data/mumble-server.sqlite && chown {uid_gid} /data/mumble-server.sqlite || true; "
         "test -f /data/mumble-server.sqlite && chmod 664 /data/mumble-server.sqlite || true; "
         f"chown {uid_gid} /data; chmod 775 /data; "
-        "rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm")
+        "rm -f /data/mumble-server.sqlite-wal /data/mumble-server.sqlite-shm "
+        "/data/mumble-server.sqlite-journal")
 
     # Stop anything still bound to the host port.
     cp = c.docker(["ps", "-q", "--filter",
@@ -187,8 +191,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         "-p", f"{env['MUMBLE_FILESERVER_PORT']}:64739/tcp",
         "-p", f"{env['MUMBLE_LIVEDOC_PORT']}:64740/tcp",
         "-p", f"{env['MUMBLE_SFU_PORT']}:10000/udp",
-        "-e", "RUST_LOG=mumble_file_server=debug,mumble_plugin_host=debug,info",
-        "-e", "MUMBLE_PLUGIN_LOG=mumble_file_server=debug,mumble_plugin_host=debug,info",
+        "-e", "RUST_LOG=mumble_file_server=debug,mumble_live_doc=debug,mumble_plugin_host=debug,info",
+        "-e", "MUMBLE_PLUGIN_LOG=mumble_file_server=debug,mumble_live_doc=debug,mumble_plugin_host=debug,info",
         *mounts,
         image,
         "--batch",

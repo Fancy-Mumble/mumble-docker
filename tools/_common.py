@@ -332,3 +332,44 @@ def require_path(env: Mapping[str, str], key: str, *, what: str = "path") -> Pat
         error(f"{key} does not exist: {p}")
         raise SystemExit(2)
     return p
+
+
+def resolve_fancy_plugins_src(env: Mapping[str, str], mumble_src: Path) -> Path:
+    """Resolve the path to the local ``fancy-plugin-example`` checkout.
+
+    Resolution order:
+
+    1. ``MUMBLE_FANCY_PLUGINS_SRC`` environment / ``.env`` entry.
+    2. ``<mumble_src>/../fancy-plugin-example`` (true sibling).
+    3. ``<mumble_src>/../../fancy/fancy-plugin-example`` (the layout
+       this repo's contributor uses locally).
+
+    Aborts with a clear error if none of the candidates exists.  The
+    workspace ``Cargo.toml`` declares a path-dep at
+    ``../mumble-server/3rdparty/mumble-plugin-host/api``, so the
+    checkout the path points at must be the same revision as
+    ``MUMBLE_SRC``.
+    """
+
+    explicit = host_path(env.get("MUMBLE_FANCY_PLUGINS_SRC"))
+    if explicit is not None:
+        if not explicit.exists():
+            error(f"MUMBLE_FANCY_PLUGINS_SRC does not exist: {explicit}")
+            raise SystemExit(2)
+        return explicit
+
+    candidates = [
+        mumble_src.parent / "fancy-plugin-example",
+        mumble_src.parent.parent / "fancy" / "fancy-plugin-example",
+    ]
+    for cand in candidates:
+        if (cand / "Cargo.toml").is_file():
+            return cand.resolve()
+
+    error(
+        "Could not locate the fancy-plugin-example checkout.\n"
+        "  Tried:\n"
+        + "\n".join(f"    - {c}" for c in candidates)
+        + "\n  Set MUMBLE_FANCY_PLUGINS_SRC in .env or your shell to override."
+    )
+    raise SystemExit(2)

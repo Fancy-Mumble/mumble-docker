@@ -42,6 +42,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     c.require_docker()
     env = c.env_with_defaults(DEFAULTS)
     src = c.require_path(env, "MUMBLE_SRC")
+    fancy_src = c.resolve_fancy_plugins_src(env, src)
 
     if args.clean:
         c.maybe_clean_buildx_cache(["--clean"])
@@ -55,6 +56,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "-f", str(c.REPO_ROOT / "Dockerfile.dev"),
         "-t", image,
         "--build-context", f"mumble-src={src}",
+        "--build-context", f"fancy-plugins-src={fancy_src}",
         str(c.REPO_ROOT),
     ])
 

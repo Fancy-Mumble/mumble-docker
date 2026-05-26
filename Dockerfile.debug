@@ -77,26 +77,37 @@ RUN cargo build --release \
 
 
 # ------------------------------------------------------------------
-# Download the fancy-greeter plugin from GitHub Releases.
-# Supports linux/amd64 and linux/arm64; other architectures skip
-# silently (the plugins directory will just be empty for them).
-# Override FANCY_PLUGIN_VERSION at build time to pin a specific release.
+# Build the local fancy-plugin-example workspace (4 example plugin
+# cdylibs) from a named build context.
+#
+# Requires `--build-context fancy-plugins-src=<path>` to point at the
+# repo root of the fancy-plugin-example checkout.  The workspace's
+# Cargo.toml path-deps assume a sibling `mumble-server/` directory, so
+# we stage the mumble-plugin-host subtree of the local mumble-server
+# checkout (`--from=mumble-src`) at the expected sibling location
+# inside the builder.
 # ------------------------------------------------------------------
-FROM ubuntu:24.04 AS plugin-fetch
-ARG TARGETARCH
-ARG FANCY_PLUGIN_VERSION=v0.2.0
-RUN apt-get update && apt-get install --no-install-recommends -y curl ca-certificates \
-  && rm -rf /var/lib/apt/lists/* \
-  && mkdir -p /plugins \
-  && case "${TARGETARCH}" in \
-       amd64) ARCHIVE="fancy-greeter-linux-x86_64.tar.gz" ;; \
-       arm64) ARCHIVE="fancy-greeter-linux-aarch64.tar.gz" ;; \
-       *)     echo "No fancy-greeter build for arch '${TARGETARCH}', skipping."; ARCHIVE="" ;; \
-     esac \
-  && if [ -n "${ARCHIVE}" ]; then \
-       curl -fsSL "https://github.com/Fancy-Mumble/fancy-plugin-example/releases/download/${FANCY_PLUGIN_VERSION}/${ARCHIVE}" \
-         | tar -xz -C /plugins; \
-     fi
+FROM ubuntu:24.04 AS fancy-plugins-build
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  curl ca-certificates build-essential pkg-config libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+# Sibling layout: fancy-plugin-example/Cargo.toml declares
+#   mumble-plugin-api = { path = "../mumble-server/3rdparty/mumble-plugin-host/api" }
+# so from /fancy-plugin-example, `..` must resolve to a directory that
+# contains `mumble-server/3rdparty/mumble-plugin-host/`.
+COPY --from=mumble-src 3rdparty/mumble-plugin-host /mumble-server/3rdparty/mumble-plugin-host
+COPY --from=fancy-plugins-src . /fancy-plugin-example
+WORKDIR /fancy-plugin-example
+RUN cargo build --release --workspace \
+ && mkdir -p /fancy-plugins \
+ && cp target/release/libfancy_greeter.so \
+       target/release/libfancy_gallery_showcase.so \
+       target/release/libfancy_info_card.so \
+       target/release/libfancy_feedback_form.so \
+       /fancy-plugins/
 
 
 FROM base AS build
@@ -193,8 +204,9 @@ COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.
 # MUMBLE_PLUGIN_DIRS.  Operators may drop additional plugins into the mounted
 # /etc/mumble/plugins directory.
 COPY --from=plugin-host-build /plugin-host/plugins/ /usr/lib/mumble-server/plugins/
-# Third-party plugins downloaded from GitHub Releases.
-COPY --from=plugin-fetch /plugins/ /usr/lib/mumble-server/plugins/
+# Locally-built fancy-plugin-example cdylibs (greeter, gallery-showcase,
+# info-card, feedback-form).  Kept unstripped to preserve debug symbols.
+COPY --from=fancy-plugins-build /fancy-plugins/ /usr/lib/mumble-server/plugins/
 COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
 
 RUN mkdir -p /data /etc/mumble/plugins \
