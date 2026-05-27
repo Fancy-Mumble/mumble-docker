@@ -23,8 +23,12 @@ if [[ -n "${MUMBLE_VERSION:-}" && "${MUMBLE_VERSION}" != "latest" ]]; then
 	elif git rev-parse -q --verify "${MUMBLE_VERSION}" >/dev/null; then
 		git checkout "${MUMBLE_VERSION}"
 	else
-		echo "Requested MUMBLE_VERSION '${MUMBLE_VERSION}' was not found in ${MUMBLE_GIT_REPO}" >&2
-		exit 1
+		# MUMBLE_VERSION is an image-tag label (e.g. the Fancy fork's
+		# FANCY_VERSION_*) that does not necessarily correspond to a
+		# git tag in the mumble-server repository.  Fall back to the
+		# already-checked-out branch tip rather than aborting the
+		# build.
+		echo "MUMBLE_VERSION '${MUMBLE_VERSION}' is not a tag/ref in ${MUMBLE_GIT_REPO}; staying on branch '${MUMBLE_GIT_BRANCH}'." >&2
 	fi
 fi
 
