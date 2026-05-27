@@ -180,6 +180,19 @@ plugin.live-doc.port=64740
 ; plugin.live-doc.file_server_admin_token=
 
 ; --------------------------------------------------------------------------
+; Example / dev plugins (fancy-plugin-example workspace)
+;
+; All six example cdylibs are baked into the dev/debug images.
+; Add the corresponding enabled=true line to load each one.
+; --------------------------------------------------------------------------
+; plugin.fancy-greeter.enabled=true
+; plugin.fancy-gallery-showcase.enabled=true
+; plugin.fancy-info-card.enabled=true
+; plugin.fancy-feedback-form.enabled=true
+; plugin.fancy-quick-poll.enabled=true
+; plugin.fancy-chat-card.enabled=true
+
+; --------------------------------------------------------------------------
 ; Ice RPC (must be last section)
 ; --------------------------------------------------------------------------
 [Ice]

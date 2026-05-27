@@ -146,25 +146,36 @@ RUN git clone https://github.com/ncopa/su-exec.git /mumble/repo/su-exec \
     && cd /mumble/repo/su-exec && make
 
 
-# Download the fancy-greeter plugin from GitHub Releases.
+# Download the fancy-plugin-example plugins from GitHub Releases.
 # Supports linux/amd64 and linux/arm64; other architectures skip
 # silently (the plugins directory will just be empty for them).
 # Override FANCY_PLUGIN_VERSION at build time to pin a specific release.
+#
+# Each plugin ships its own per-arch tarball; the names follow the
+# pattern  fancy-<crate>-linux-<arch>.tar.gz  (see the upstream CI in
+# fancy-plugin-example/.github/workflows/ci.yml).
 # ------------------------------------------------------------------
 FROM ubuntu:24.04 AS plugin-fetch
 ARG TARGETARCH
 ARG FANCY_PLUGIN_VERSION=v0.2.0
+ARG FANCY_PLUGINS="fancy-greeter fancy-gallery-showcase fancy-info-card fancy-feedback-form fancy-quick-poll fancy-chat-card"
 RUN apt-get update && apt-get install --no-install-recommends -y curl ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /plugins \
   && case "${TARGETARCH}" in \
-       amd64) ARCHIVE="fancy-greeter-linux-x86_64.tar.gz" ;; \
-       arm64) ARCHIVE="fancy-greeter-linux-aarch64.tar.gz" ;; \
-       *)     echo "No fancy-greeter build for arch '${TARGETARCH}', skipping."; ARCHIVE="" ;; \
+       amd64) ARCH_SUFFIX="linux-x86_64" ;; \
+       arm64) ARCH_SUFFIX="linux-aarch64" ;; \
+       *)     echo "No fancy-plugin-example builds for arch '${TARGETARCH}', skipping."; ARCH_SUFFIX="" ;; \
      esac \
-  && if [ -n "${ARCHIVE}" ]; then \
-       curl -fsSL "https://github.com/Fancy-Mumble/fancy-plugin-example/releases/download/${FANCY_PLUGIN_VERSION}/${ARCHIVE}" \
-         | tar -xz -C /plugins; \
+  && if [ -n "${ARCH_SUFFIX}" ]; then \
+       for crate in ${FANCY_PLUGINS}; do \
+         ARCHIVE="${crate}-${ARCH_SUFFIX}.tar.gz"; \
+         URL="https://github.com/Fancy-Mumble/fancy-plugin-example/releases/download/${FANCY_PLUGIN_VERSION}/${ARCHIVE}"; \
+         echo "Fetching ${ARCHIVE}"; \
+         if ! curl -fsSL "${URL}" | tar -xz -C /plugins; then \
+           echo "WARNING: failed to fetch ${ARCHIVE} - skipping"; \
+         fi; \
+       done; \
      fi
 
 

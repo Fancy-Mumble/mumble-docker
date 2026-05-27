@@ -107,6 +107,8 @@ RUN cargo build --release --workspace \
        target/release/libfancy_gallery_showcase.so \
        target/release/libfancy_info_card.so \
        target/release/libfancy_feedback_form.so \
+       target/release/libfancy_quick_poll.so \
+       target/release/libfancy_chat_card.so \
        /fancy-plugins/
 
 
@@ -205,7 +207,8 @@ COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.
 # /etc/mumble/plugins directory.
 COPY --from=plugin-host-build /plugin-host/plugins/ /usr/lib/mumble-server/plugins/
 # Locally-built fancy-plugin-example cdylibs (greeter, gallery-showcase,
-# info-card, feedback-form).  Kept unstripped to preserve debug symbols.
+# info-card, feedback-form, quick-poll, chat-card).  Kept unstripped to
+# preserve debug symbols.
 COPY --from=fancy-plugins-build /fancy-plugins/ /usr/lib/mumble-server/plugins/
 COPY --from=build /mumble/default_config.ini /etc/mumble/bare_config.ini
 

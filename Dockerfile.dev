@@ -101,11 +101,15 @@ RUN cargo build --release --workspace \
           target/release/libfancy_gallery_showcase.so \
           target/release/libfancy_info_card.so \
           target/release/libfancy_feedback_form.so \
+          target/release/libfancy_quick_poll.so \
+          target/release/libfancy_chat_card.so \
  && mkdir -p /fancy-plugins \
  && cp target/release/libfancy_greeter.so \
        target/release/libfancy_gallery_showcase.so \
        target/release/libfancy_info_card.so \
        target/release/libfancy_feedback_form.so \
+       target/release/libfancy_quick_poll.so \
+       target/release/libfancy_chat_card.so \
        /fancy-plugins/
 
 
