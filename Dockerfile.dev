@@ -183,9 +183,11 @@ RUN --mount=type=cache,target=/mumble/repo/build,id=mumble-cmake-build \
     (cp /mumble/repo/build/src/murmur/fcm/libmumble_push_fcm.so /mumble/ 2>/dev/null || true)
 
 # Run pchat regression tests
+# QT_QPA_PLATFORM=offscreen lets the Qt-based test initialize without an X
+# display (the build container has no DISPLAY / xcb).
 RUN --mount=type=cache,target=/mumble/repo/build,id=mumble-cmake-build \
     cd /mumble/repo/build && \
-    ctest --test-dir . -R TestPersistentChatManager --output-on-failure --no-tests=error
+    QT_QPA_PLATFORM=offscreen ctest --test-dir . -R TestPersistentChatManager --output-on-failure --no-tests=error
 
 # Copy default config
 RUN cp -f /mumble/repo/auxiliary_files/mumble-server.ini /mumble/default_config.ini 2>/dev/null \

@@ -309,6 +309,91 @@ def standard_mounts(env: Mapping[str, str]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Windows host-port reservations (winnat / Hyper-V)
+# ---------------------------------------------------------------------------
+
+def windows_excluded_ports(proto: str) -> list[tuple[int, int, bool]]:
+    """Return Windows' reserved host-port ranges for ``proto`` (tcp/udp).
+
+    Each entry is ``(start, end, administered)``.  ``administered`` is
+    ``True`` for the rows ``netsh`` marks with ``*`` (persistent
+    exclusions added explicitly) and ``False`` for the dynamic ranges
+    winnat/Hyper-V allocates on the fly.
+
+    Returns an empty list on non-Windows hosts or if ``netsh`` cannot be
+    queried.  Parsing keys off the numeric columns only, so it is immune
+    to localised ``netsh`` headers.
+    """
+
+    if os.name != "nt":
+        return []
+    try:
+        cp = subprocess.run(
+            ["netsh", "interface", "ipv4", "show",
+             "excludedportrange", f"protocol={proto}"],
+            check=False, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except OSError:
+        return []
+
+    ranges: list[tuple[int, int, bool]] = []
+    for line in (cp.stdout or "").splitlines():
+        parts = line.split()
+        if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+            administered = len(parts) >= 3 and parts[2] == "*"
+            ranges.append((int(parts[0]), int(parts[1]), administered))
+    return ranges
+
+
+def assert_host_ports_bindable(ports: Sequence[tuple[int, str]]) -> None:
+    """Abort early if any host port is trapped in a Windows reserved range.
+
+    ``ports`` is a sequence of ``(port, proto)`` pairs we are about to
+    publish.  A port that lies inside a *dynamic* (non-administered)
+    excluded range cannot be bound by Docker -- the daemon fails it with
+    the cryptic ``"An attempt was made to access a socket in a way
+    forbidden by its access permissions"`` error.  Persistent
+    (administered) exclusions stay bindable, so those are ignored.
+
+    No-op on non-Windows hosts.
+    """
+
+    if os.name != "nt":
+        return
+
+    cache: dict[str, list[tuple[int, int, bool]]] = {}
+    blocked: list[tuple[int, str]] = []
+    for port, proto in ports:
+        ranges = cache.setdefault(proto, windows_excluded_ports(proto))
+        for start, end, administered in ranges:
+            if start <= port <= end and not administered:
+                blocked.append((port, proto))
+                break
+
+    if not blocked:
+        return
+
+    error("Host port(s) are inside a Windows reserved (winnat/Hyper-V) range "
+          "and cannot be bound by Docker:")
+    for port, proto in blocked:
+        info(f"    - {port}/{proto}")
+    info("")
+    info("Reserve them as persistent exclusions from an elevated "
+         "(Administrator) PowerShell, then restart Docker Desktop:")
+    info("")
+    info("    net stop winnat")
+    for port, proto in blocked:
+        info(f"    netsh int ipv4 add excludedportrange protocol={proto} "
+             f"startport={port} numberofports=1 store=persistent")
+    info("    net start winnat")
+    info("")
+    info("(Persistent exclusions survive reboots and remain bindable, unlike "
+         "the dynamic reservations winnat allocates.)")
+    raise SystemExit(1)
+
+
+# ---------------------------------------------------------------------------
 # Misc
 # ---------------------------------------------------------------------------
 

@@ -65,6 +65,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     c.require_docker()
     env = c.env_with_defaults(DEFAULTS)
+
+    # Fail fast on Windows if a host port is trapped in a winnat/Hyper-V
+    # reserved range -- otherwise the final `docker run` dies with a
+    # cryptic socket error after all the build/seed work is done.
+    c.assert_host_ports_bindable([
+        (int(env["MUMBLE_PORT"]),            "tcp"),
+        (int(env["MUMBLE_PORT"]),            "udp"),
+        (int(env["MUMBLE_FILESERVER_PORT"]), "tcp"),
+        (int(env["MUMBLE_LIVEDOC_PORT"]),    "tcp"),
+        (int(env["MUMBLE_SFU_PORT"]),        "udp"),
+    ])
+
     src = c.require_path(env, "MUMBLE_SRC")
     fancy_src = c.resolve_fancy_plugins_src(env, src)
 
