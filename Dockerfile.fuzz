@@ -1,0 +1,64 @@
+# syntax=docker/dockerfile:1
+# Fuzzing toolchain image for the Mumble server.
+#
+# Contains everything needed to build & run both the Rust (cargo-fuzz) and the
+# C++ (libFuzzer) harnesses.  It carries NO application source - the
+# mumble-server checkout is bind-mounted at /src by `python -m tools.dev_fuzz`,
+# which is the supported entry point.
+#
+#   docker build -t mumble-fuzz -f Dockerfile.fuzz .
+#   docker run --rm -it -v <mumble-server>:/src \
+#       --cap-add SYS_PTRACE --security-opt seccomp=unconfined mumble-fuzz list
+FROM ubuntu:24.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN sed -i 's|http://security.ubuntu.com|http://archive.ubuntu.com|g' /etc/apt/sources.list.d/ubuntu.sources \
+  && apt-get -o Acquire::Check-Date=false update && apt-get install --no-install-recommends -y \
+        clang \
+        lld \
+        llvm \
+        cmake \
+        ninja-build \
+        pkg-config \
+        python3 \
+        curl \
+        ca-certificates \
+        git \
+        build-essential \
+        qt6-base-dev \
+        qt6-base-dev-tools \
+        libgl1-mesa-dev \
+        protobuf-compiler \
+        libprotobuf-dev \
+  && rm -rf /var/lib/apt/lists/*
+
+# Rust nightly (required by cargo-fuzz) + cargo-fuzz itself.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --default-toolchain nightly --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+# NOTE: no `--locked`. cargo-fuzz's pinned lockfile drags in an ancient
+# rustix (0.36) whose linux_raw backend fails to compile on a current
+# nightly ("rustc_layout_scalar_valid_range_start ... reserved"). Letting
+# cargo resolve fresh transitive deps pulls a rustix that builds cleanly.
+RUN cargo install cargo-fuzz
+
+# Build the C++ harnesses with Clang; tell the runner where the source lives.
+ENV CC=clang
+ENV CXX=clang++
+ENV FUZZ_REPO=/src
+
+# This image carries no Node toolchain (the fuzz harnesses don't need the
+# file-server's web frontend).  Force mumble-file-server's build.rs to reuse the
+# committed file-server/web/dist/password.html artifact from the bind-mounted
+# source instead of trying to invoke npm during a fuzz build.
+ENV MUMBLE_FILESERVER_SKIP_WEB_BUILD=1
+
+# Bake in the in-container driver. The bind-mounted source at /src stays
+# app-only, so iterating on harnesses/corpus needs no image rebuild; changing
+# the runner itself is a one-layer rebuild.
+COPY scripts/fuzz_runner.py /opt/fuzz/fuzz_runner.py
+
+WORKDIR /src
+ENTRYPOINT ["python3", "/opt/fuzz/fuzz_runner.py"]
+CMD ["list"]

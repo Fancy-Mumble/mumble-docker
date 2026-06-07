@@ -9,6 +9,7 @@ Available commands:
     setup          Launch the setup wizard (forwards to setup_wizard).
     dev-build      Incremental dev build of mumble-server.
     dev-debug      Debug build executed under gdb.
+    dev-fuzz       Build & run the fuzz harnesses in a container.
     vanilla-build  Build & run an unmodified upstream Mumble server.
     export-db      Snapshot the SQLite DB from a running container.
     import-db      Import a local SQLite DB into the data volume.
@@ -28,6 +29,7 @@ from . import (
     buildx,
     dev_build,
     dev_debug,
+    dev_fuzz,
     export_db,
     import_db,
     setup,
@@ -39,6 +41,7 @@ _COMMANDS: dict[str, Callable[..., int]] = {
     "setup":         setup.main,
     "dev-build":     dev_build.main,
     "dev-debug":     dev_debug.main,
+    "dev-fuzz":      dev_fuzz.main,
     "vanilla-build": vanilla_build.main,
     "export-db":     export_db.main,
     "import-db":     import_db.main,

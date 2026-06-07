@@ -13,6 +13,7 @@ tools/
 ├── _common.py         - shared helpers (env loading, docker, paths)
 ├── dev_build.py       - incremental dev build of mumble-server
 ├── dev_debug.py       - debug build, executed under gdb
+├── dev_fuzz.py        - build & run the fuzz harnesses in a container
 ├── vanilla_build.py   - build & run unmodified upstream Mumble
 ├── export_db.py       - snapshot the SQLite DB out of a container
 ├── import_db.py       - import a SQLite DB into the data volume
@@ -35,6 +36,7 @@ python -m tools setup --gui           # GUI variant (DearPyGui)
 python -m tools dev-build             # incremental build + restart
 python -m tools dev-build --clean     # also prune BuildKit cache
 python -m tools dev-debug             # build with debug symbols, run under gdb
+python -m tools dev-fuzz list         # fuzz harnesses: list/rust/cpp/smoke/all
 python -m tools vanilla-build         # plain upstream Mumble
 python -m tools export-db [path]      # snapshot live DB
 python -m tools import-db [path]      # restore a DB into the volume

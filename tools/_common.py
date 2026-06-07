@@ -8,6 +8,7 @@ packages.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -147,7 +148,7 @@ def run(
     """
 
     if not quiet:
-        info(_c("2", "$ " + " ".join(_quote(a) for a in argv)))
+        info(_c("2", "$ " + " ".join(_quote(_redact(a)) for a in argv)))
 
     full_env: Optional[Mapping[str, str]] = None
     if env is not None:
@@ -182,6 +183,27 @@ def run(
 def _quote(arg: str) -> str:
     if not arg or any(c.isspace() or c in '"\\' for c in arg):
         return '"' + arg.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return arg
+
+
+# Argument names whose value is a secret and must never be echoed to the
+# terminal/logs (FCM service-account key, passwords, tokens, base64 blobs, ...).
+_SECRET_NAME_RE = re.compile(
+    r"(CREDENTIAL|SECRET|TOKEN|PASSWORD|PASSPHRASE|PRIVATE|APIKEY|API_KEY|_KEY|BASE64)",
+    re.IGNORECASE,
+)
+
+
+def _redact(arg: str) -> str:
+    """Mask the value of a ``NAME=VALUE`` argument when ``NAME`` looks secret,
+    so credentials never reach the printed command line.  The real value is
+    still passed to the child process unchanged - only the echo is masked."""
+    eq = arg.find("=")
+    if eq <= 0:
+        return arg
+    name = arg[:eq]
+    if _SECRET_NAME_RE.search(name):
+        return name + "=***"
     return arg
 
 

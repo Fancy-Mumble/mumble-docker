@@ -71,22 +71,38 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   && rm -rf /var/lib/apt/lists/*
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
+# Node.js 22 LTS (NodeSource): Ubuntu 24.04 ships Node 18, which is too old for
+# the file-server web frontend's Vite build.  Used below to compile the React +
+# MUI password page into the single-file artifact the crate embeds.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get install --no-install-recommends -y nodejs \
+ && rm -rf /var/lib/apt/lists/*
 # Disable incremental compilation to significantly reduce disk usage during
 # multi-platform CI builds (each platform builds in parallel, and incremental
 # artifacts can exhaust the runner's available disk space).
 ENV CARGO_INCREMENTAL=0
 COPY --from=mumble-src /mumble/repo/3rdparty/mumble-plugin-host /plugin-host
 WORKDIR /plugin-host
+# Build the embedded file-server web pages (React + MUI -> file-server/web/dist/
+# password.html, which the crate embeds via include_str!) before the Rust build.
+# MUMBLE_FILESERVER_SKIP_WEB_BUILD then tells the crate's build.rs to reuse this
+# artifact instead of invoking npm a second time.
+RUN npm --prefix file-server/web ci \
+ && npm --prefix file-server/web run build
+ENV MUMBLE_FILESERVER_SKIP_WEB_BUILD=1
 RUN cargo build --release \
       -p mumble-plugin-host \
       -p mumble-file-server \
       -p mumble-live-doc \
+      -p mumble-link-preview \
  && strip target/release/libmumble_plugin_host.so \
           target/release/libmumble_file_server.so \
           target/release/libmumble_live_doc.so \
+          target/release/libmumble_link_preview.so \
  && mkdir -p /plugin-host/plugins \
  && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
- && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/
+ && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/ \
+ && cp target/release/libmumble_link_preview.so /plugin-host/plugins/
 
 
 FROM base AS build
