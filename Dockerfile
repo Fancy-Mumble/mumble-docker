@@ -94,19 +94,32 @@ WORKDIR /plugin-host
 # of invoking npm (which is not installed in this per-target stage).
 COPY --from=fileserver-web-build /web/dist /plugin-host/file-server/web/dist
 ENV MUMBLE_FILESERVER_SKIP_WEB_BUILD=1
-RUN cargo build --release \
-      -p mumble-plugin-host \
-      -p mumble-file-server \
-      -p mumble-live-doc \
-      -p mumble-link-preview \
- && strip target/release/libmumble_plugin_host.so \
+# wasmtime's cranelift JIT backend has no 32-bit ARM ISA, so the WASM plugin host
+# cannot compile for armv7 (TARGETARCH=arm). On that arch only, build the host
+# WITHOUT the wasm-plugins feature: native cdylib plugins still load and the C ABI
+# is unchanged (no extern "C" export is feature-gated), but WASM component plugins
+# are unavailable. The plugin crates depend only on mumble-plugin-api (never on
+# the host), so they build identically on every arch.
+ARG TARGETARCH
+RUN set -eux; \
+    if [ "${TARGETARCH}" = "arm" ]; then \
+      cargo build --release --no-default-features -p mumble-plugin-host; \
+      cargo build --release -p mumble-file-server -p mumble-live-doc -p mumble-link-preview; \
+    else \
+      cargo build --release \
+        -p mumble-plugin-host \
+        -p mumble-file-server \
+        -p mumble-live-doc \
+        -p mumble-link-preview; \
+    fi; \
+    strip target/release/libmumble_plugin_host.so \
           target/release/libmumble_file_server.so \
           target/release/libmumble_live_doc.so \
-          target/release/libmumble_link_preview.so \
- && mkdir -p /plugin-host/plugins \
- && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
- && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/ \
- && cp target/release/libmumble_link_preview.so /plugin-host/plugins/
+          target/release/libmumble_link_preview.so; \
+    mkdir -p /plugin-host/plugins; \
+    cp target/release/libmumble_file_server.so /plugin-host/plugins/; \
+    cp target/release/libmumble_live_doc.so   /plugin-host/plugins/; \
+    cp target/release/libmumble_link_preview.so /plugin-host/plugins/
 
 
 FROM base AS build
