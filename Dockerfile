@@ -64,6 +64,17 @@ RUN /mumble/scripts/clone.sh
 # Build the Rust mumble-plugin-host cdylib and the bundled dynamic plugins
 # (file-server, live-doc) in isolation so the Rust toolchain is not needed
 # inside the C++ build stage.
+# Build the file-server web frontend (React + MUI -> single-file password.html)
+# ONCE, on the native build platform. The output is static, architecture-
+# independent HTML, so it must NOT be built under per-target emulation: NodeSource
+# publishes no armhf packages, which breaks the linux/arm/v7 leg of the matrix.
+# Pinning to $BUILDPLATFORM also avoids emulating Node for every target arch.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS fileserver-web-build
+COPY --from=mumble-src /mumble/repo/3rdparty/mumble-plugin-host/file-server/web /web
+WORKDIR /web
+RUN npm ci && npm run build
+
+
 FROM ubuntu:24.04 AS plugin-host-build
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install --no-install-recommends -y \
@@ -71,24 +82,17 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   && rm -rf /var/lib/apt/lists/*
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
-# Node.js 22 LTS (NodeSource): Ubuntu 24.04 ships Node 18, which is too old for
-# the file-server web frontend's Vite build.  Used below to compile the React +
-# MUI password page into the single-file artifact the crate embeds.
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install --no-install-recommends -y nodejs \
- && rm -rf /var/lib/apt/lists/*
 # Disable incremental compilation to significantly reduce disk usage during
 # multi-platform CI builds (each platform builds in parallel, and incremental
 # artifacts can exhaust the runner's available disk space).
 ENV CARGO_INCREMENTAL=0
 COPY --from=mumble-src /mumble/repo/3rdparty/mumble-plugin-host /plugin-host
 WORKDIR /plugin-host
-# Build the embedded file-server web pages (React + MUI -> file-server/web/dist/
-# password.html, which the crate embeds via include_str!) before the Rust build.
-# MUMBLE_FILESERVER_SKIP_WEB_BUILD then tells the crate's build.rs to reuse this
-# artifact instead of invoking npm a second time.
-RUN npm --prefix file-server/web ci \
- && npm --prefix file-server/web run build
+# Drop in the pre-built, architecture-independent web artifact (password.html,
+# embedded by the crate via include_str!) from the native-platform web build.
+# MUMBLE_FILESERVER_SKIP_WEB_BUILD tells the crate's build.rs to reuse it instead
+# of invoking npm (which is not installed in this per-target stage).
+COPY --from=fileserver-web-build /web/dist /plugin-host/file-server/web/dist
 ENV MUMBLE_FILESERVER_SKIP_WEB_BUILD=1
 RUN cargo build --release \
       -p mumble-plugin-host \
