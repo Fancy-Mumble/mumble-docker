@@ -35,7 +35,8 @@ python -m tools setup --gui           # GUI variant (DearPyGui)
 python -m tools dev-build             # incremental build + restart
 python -m tools dev-build --clean     # also prune BuildKit cache
 python -m tools dev-debug             # build with debug symbols, run under gdb
-python -m tools vanilla-build         # plain upstream Mumble
+python -m tools vanilla-build         # plain upstream Mumble (1.6.x from source)
+python -m tools vanilla-build --version 1.3  # static murmur 1.3.0 release
 python -m tools export-db [path]      # snapshot live DB
 python -m tools import-db [path]      # restore a DB into the volume
 python -m tools buildx [image]        # multi-arch build & push

@@ -1,0 +1,96 @@
+# Vanilla upstream Mumble *1.3.0* server.
+#
+# Unlike Dockerfile.vanilla (which compiles the 1.6.x branch with CMake),
+# 1.3.0 predates that build system entirely (it was qmake + Qt5, binary
+# "murmurd").  Rather than fight an ancient codebase against a modern
+# toolchain, this image uses the *official* statically-linked server
+# release published on GitHub:
+#
+#   murmur-static_x86-1.3.0.tar.bz2  ->  murmur.x86  (i386, fully static)
+#
+# The binary is 32-bit; it runs on any x86_64 kernel with IA32 emulation
+# (Docker Desktop / WSL2 included).  It is installed behind a tiny shim at
+# /usr/bin/mumble-server so the shared entrypoint.sh works unchanged: the
+# entrypoint detects the version via `--version` on STDOUT, but murmur 1.3.0
+# logs (its version included) to STDERR, so the shim mirrors stderr onto
+# stdout for version queries only and passes every other call straight
+# through.  The entrypoint already back-translates --foreground/--ini/
+# --set-su-pw to murmur's legacy -fg/-ini/-supw for versions <= 1.5.
+
+ARG MURMUR_VERSION=1.3.0
+
+# ---------------------------------------------------------------------------
+# Fetch the official static server release.
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04 AS fetch
+ARG DEBIAN_FRONTEND=noninteractive
+ARG MURMUR_VERSION
+RUN apt-get -o Acquire::Check-Date=false update \
+  && apt-get install --no-install-recommends -y ca-certificates curl bzip2 \
+  && rm -rf /var/lib/apt/lists/*
+RUN curl -fsSL -o /tmp/murmur.tar.bz2 \
+      "https://github.com/mumble-voip/mumble/releases/download/${MURMUR_VERSION}/murmur-static_x86-${MURMUR_VERSION}.tar.bz2" \
+  && mkdir -p /murmur \
+  && tar -xjf /tmp/murmur.tar.bz2 -C /murmur --strip-components=1 \
+  && test -x /murmur/murmur.x86
+
+# ---------------------------------------------------------------------------
+# Build su-exec (the entrypoint drops privileges with it).
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04 AS suexec
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get -o Acquire::Check-Date=false update \
+  && apt-get install --no-install-recommends -y ca-certificates gcc libc6-dev make git \
+  && rm -rf /var/lib/apt/lists/*
+RUN git clone --depth 1 https://github.com/ncopa/su-exec.git /su-exec \
+  && cd /su-exec && make
+
+# ---------------------------------------------------------------------------
+# Runtime image.  The murmur binary is static, so almost nothing is needed
+# beyond bash + coreutils (already in the base) for entrypoint.sh.
+# ---------------------------------------------------------------------------
+FROM ubuntu:24.04
+ARG DEBIAN_FRONTEND=noninteractive
+RUN apt-get -o Acquire::Check-Date=false update \
+  && apt-get install --no-install-recommends -y ca-certificates \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* \
+  && mkdir -p /data /etc/mumble
+
+COPY --from=fetch --chmod=755 /murmur/murmur.x86 /usr/bin/murmur.x86
+COPY --from=fetch /murmur/murmur.ini /etc/mumble/bare_config.ini
+COPY --from=suexec --chmod=755 /su-exec/su-exec /usr/local/bin/su-exec
+
+# Shim so the shared entrypoint works unchanged against static murmur 1.3.0,
+# which differs from modern mumble-server in two ways:
+#   1. It logs (its --version line included) to STDERR, but the entrypoint
+#      detects the version from STDOUT -> mirror stderr for version queries.
+#   2. Its password-set operation (-supw) ALWAYS exits non-zero after success,
+#      which would trip the entrypoint's `set -e` -> translate the documented
+#      success line into exit 0.
+# Every other invocation passes straight through.
+RUN printf '%s\n' \
+  '#!/bin/sh' \
+  'case "$1" in' \
+  '  -version|--version) exec /usr/bin/murmur.x86 "$@" 2>&1 ;;' \
+  'esac' \
+  'for a in "$@"; do' \
+  '  case "$a" in' \
+  '    -supw|--set-su-pw)' \
+  '      out=$(/usr/bin/murmur.x86 "$@" 2>&1)' \
+  '      printf "%s\\n" "$out"' \
+  '      echo "$out" | grep -q "Superuser password set" && exit 0' \
+  '      exit 1 ;;' \
+  '  esac' \
+  'done' \
+  'exec /usr/bin/murmur.x86 "$@"' \
+  > /usr/bin/mumble-server \
+  && chmod 755 /usr/bin/mumble-server
+
+# 1.3.0 has no file-server; only the voice port is used.
+EXPOSE 64738/tcp 64738/udp
+COPY entrypoint.sh /entrypoint.sh
+
+VOLUME ["/data"]
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["/usr/bin/mumble-server"]
