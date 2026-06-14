@@ -104,22 +104,25 @@ ARG TARGETARCH
 RUN set -eux; \
     if [ "${TARGETARCH}" = "arm" ]; then \
       cargo build --release --no-default-features -p mumble-plugin-host; \
-      cargo build --release -p mumble-file-server -p mumble-live-doc -p mumble-link-preview; \
+      cargo build --release -p mumble-file-server -p mumble-live-doc -p mumble-link-preview -p mumble-calendar; \
     else \
       cargo build --release \
         -p mumble-plugin-host \
         -p mumble-file-server \
         -p mumble-live-doc \
-        -p mumble-link-preview; \
+        -p mumble-link-preview \
+        -p mumble-calendar; \
     fi; \
     strip target/release/libmumble_plugin_host.so \
           target/release/libmumble_file_server.so \
           target/release/libmumble_live_doc.so \
-          target/release/libmumble_link_preview.so; \
+          target/release/libmumble_link_preview.so \
+          target/release/libmumble_calendar.so; \
     mkdir -p /plugin-host/plugins; \
     cp target/release/libmumble_file_server.so /plugin-host/plugins/; \
     cp target/release/libmumble_live_doc.so   /plugin-host/plugins/; \
-    cp target/release/libmumble_link_preview.so /plugin-host/plugins/
+    cp target/release/libmumble_link_preview.so /plugin-host/plugins/; \
+    cp target/release/libmumble_calendar.so /plugin-host/plugins/
 
 
 FROM base AS build
