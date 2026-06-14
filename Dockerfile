@@ -95,14 +95,17 @@ RUN cargo build --release \
       -p mumble-file-server \
       -p mumble-live-doc \
       -p mumble-link-preview \
+      -p mumble-calendar \
  && strip target/release/libmumble_plugin_host.so \
           target/release/libmumble_file_server.so \
           target/release/libmumble_live_doc.so \
           target/release/libmumble_link_preview.so \
+          target/release/libmumble_calendar.so \
  && mkdir -p /plugin-host/plugins \
  && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
  && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/ \
- && cp target/release/libmumble_link_preview.so /plugin-host/plugins/
+ && cp target/release/libmumble_link_preview.so /plugin-host/plugins/ \
+ && cp target/release/libmumble_calendar.so /plugin-host/plugins/
 
 
 FROM base AS build
