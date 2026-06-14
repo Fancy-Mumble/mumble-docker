@@ -13,6 +13,7 @@ tools/
 ├── _common.py         - shared helpers (env loading, docker, paths)
 ├── dev_build.py       - incremental dev build of mumble-server
 ├── dev_debug.py       - debug build, executed under gdb
+├── dev_fuzz.py        - build & run the fuzz harnesses in a container
 ├── vanilla_build.py   - build & run unmodified upstream Mumble
 ├── export_db.py       - snapshot the SQLite DB out of a container
 ├── import_db.py       - import a SQLite DB into the data volume

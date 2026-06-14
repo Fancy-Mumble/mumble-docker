@@ -64,6 +64,17 @@ RUN /mumble/scripts/clone.sh
 # Build the Rust mumble-plugin-host cdylib and the bundled dynamic plugins
 # (file-server, live-doc) in isolation so the Rust toolchain is not needed
 # inside the C++ build stage.
+# Build the file-server web frontend (React + MUI -> single-file password.html)
+# ONCE, on the native build platform. The output is static, architecture-
+# independent HTML, so it must NOT be built under per-target emulation: NodeSource
+# publishes no armhf packages, which breaks the linux/arm/v7 leg of the matrix.
+# Pinning to $BUILDPLATFORM also avoids emulating Node for every target arch.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS fileserver-web-build
+COPY --from=mumble-src /mumble/repo/3rdparty/mumble-plugin-host/file-server/web /web
+WORKDIR /web
+RUN npm ci && npm run build
+
+
 FROM ubuntu:24.04 AS plugin-host-build
 ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install --no-install-recommends -y \
@@ -77,16 +88,41 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 ENV CARGO_INCREMENTAL=0
 COPY --from=mumble-src /mumble/repo/3rdparty/mumble-plugin-host /plugin-host
 WORKDIR /plugin-host
-RUN cargo build --release \
-      -p mumble-plugin-host \
-      -p mumble-file-server \
-      -p mumble-live-doc \
- && strip target/release/libmumble_plugin_host.so \
+# Drop in the pre-built, architecture-independent web artifact (password.html,
+# embedded by the crate via include_str!) from the native-platform web build.
+# MUMBLE_FILESERVER_SKIP_WEB_BUILD tells the crate's build.rs to reuse it instead
+# of invoking npm (which is not installed in this per-target stage).
+COPY --from=fileserver-web-build /web/dist /plugin-host/file-server/web/dist
+ENV MUMBLE_FILESERVER_SKIP_WEB_BUILD=1
+# wasmtime's cranelift JIT backend has no 32-bit ARM ISA, so the WASM plugin host
+# cannot compile for armv7 (TARGETARCH=arm). On that arch only, build the host
+# WITHOUT the wasm-plugins feature: native cdylib plugins still load and the C ABI
+# is unchanged (no extern "C" export is feature-gated), but WASM component plugins
+# are unavailable. The plugin crates depend only on mumble-plugin-api (never on
+# the host), so they build identically on every arch.
+ARG TARGETARCH
+RUN set -eux; \
+    if [ "${TARGETARCH}" = "arm" ]; then \
+      cargo build --release --no-default-features -p mumble-plugin-host; \
+      cargo build --release -p mumble-file-server -p mumble-live-doc -p mumble-link-preview -p mumble-calendar; \
+    else \
+      cargo build --release \
+        -p mumble-plugin-host \
+        -p mumble-file-server \
+        -p mumble-live-doc \
+        -p mumble-link-preview \
+        -p mumble-calendar; \
+    fi; \
+    strip target/release/libmumble_plugin_host.so \
           target/release/libmumble_file_server.so \
           target/release/libmumble_live_doc.so \
- && mkdir -p /plugin-host/plugins \
- && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
- && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/
+          target/release/libmumble_link_preview.so \
+          target/release/libmumble_calendar.so; \
+    mkdir -p /plugin-host/plugins; \
+    cp target/release/libmumble_file_server.so /plugin-host/plugins/; \
+    cp target/release/libmumble_live_doc.so   /plugin-host/plugins/; \
+    cp target/release/libmumble_link_preview.so /plugin-host/plugins/; \
+    cp target/release/libmumble_calendar.so /plugin-host/plugins/
 
 
 FROM base AS build

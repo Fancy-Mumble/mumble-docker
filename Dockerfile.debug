@@ -51,7 +51,16 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --de
 ENV PATH="/root/.cargo/bin:${PATH}"
 COPY --from=mumble-src 3rdparty/webrtc-sfu /sfu
 WORKDIR /sfu
-RUN cargo build --release && strip target/release/libwebrtc_sfu.so
+# Persist the cargo registry/git caches and the target dir across builds so
+# only changed crates recompile. Artefacts are copied out of the (ephemeral)
+# target cache mount into /sfu/out so the later COPY --from can read them.
+RUN --mount=type=cache,target=/root/.cargo/registry,id=sfu-cargo-registry \
+    --mount=type=cache,target=/root/.cargo/git,id=sfu-cargo-git \
+    --mount=type=cache,target=/sfu/target,id=sfu-target \
+    cargo build --release \
+ && mkdir -p /sfu/out \
+ && cp target/release/libwebrtc_sfu.so /sfu/out/ \
+ && strip /sfu/out/libwebrtc_sfu.so
 
 
 # Build the Rust mumble-plugin-host cdylib in its own stage. This produces
@@ -64,16 +73,35 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   && rm -rf /var/lib/apt/lists/*
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
+# Node.js 22 LTS (NodeSource): Ubuntu 24.04 ships Node 18, which is too old for
+# the file-server web frontend's Vite build.
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get install --no-install-recommends -y nodejs \
+ && rm -rf /var/lib/apt/lists/*
 COPY --from=mumble-src 3rdparty/mumble-plugin-host /plugin-host
 WORKDIR /plugin-host
-RUN cargo build --release \
+# Build the embedded file-server web pages (React + MUI -> file-server/web/dist/
+# password.html, embedded by the crate via include_str!) before the Rust build.
+# MUMBLE_FILESERVER_SKIP_WEB_BUILD then tells the crate's build.rs to reuse this
+# artifact instead of invoking npm a second time.
+RUN --mount=type=cache,target=/root/.npm,id=plugin-host-npm \
+    npm --prefix file-server/web ci \
+ && npm --prefix file-server/web run build
+ENV MUMBLE_FILESERVER_SKIP_WEB_BUILD=1
+RUN --mount=type=cache,target=/root/.cargo/registry,id=plugin-host-cargo-registry \
+    --mount=type=cache,target=/root/.cargo/git,id=plugin-host-cargo-git \
+    --mount=type=cache,target=/plugin-host/target,id=plugin-host-target \
+    cargo build --release \
       -p mumble-plugin-host \
       -p mumble-file-server \
       -p mumble-live-doc \
- && patchelf --set-soname libmumble_plugin_host.so target/release/libmumble_plugin_host.so \
- && mkdir -p /plugin-host/plugins \
+      -p mumble-link-preview \
+ && mkdir -p /plugin-host/out /plugin-host/plugins \
+ && cp target/release/libmumble_plugin_host.so /plugin-host/out/ \
+ && patchelf --set-soname libmumble_plugin_host.so /plugin-host/out/libmumble_plugin_host.so \
  && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
- && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/
+ && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/ \
+ && cp target/release/libmumble_link_preview.so /plugin-host/plugins/
 
 
 # ------------------------------------------------------------------
@@ -130,7 +158,10 @@ COPY --from=mumble-src 3rdparty/mumble-plugin-host /mumble-server/3rdparty/mumbl
 COPY --from=fancy-plugins-src . /fancy-plugin-example
 WORKDIR /fancy-plugin-example
 # Native cdylib plugins.
-RUN cargo build --release --workspace \
+RUN --mount=type=cache,target=/root/.cargo/registry,id=fancy-cargo-registry \
+    --mount=type=cache,target=/root/.cargo/git,id=fancy-cargo-git \
+    --mount=type=cache,target=/fancy-plugin-example/target,id=fancy-target \
+    cargo build --release --workspace \
  && mkdir -p /fancy-plugins \
  && cp target/release/libfancy_greeter.so \
        target/release/libfancy_gallery_showcase.so \
@@ -143,7 +174,10 @@ RUN cargo build --release --workspace \
 # then wrapped as a component by wasm-tools.
 # `rustup target add` is done here (not in a pre-COPY layer) so the target is
 # always added to the current active toolchain immediately before the build.
-RUN rustup target add wasm32-unknown-unknown \
+RUN --mount=type=cache,target=/root/.cargo/registry,id=fancy-cargo-registry \
+    --mount=type=cache,target=/root/.cargo/git,id=fancy-cargo-git \
+    --mount=type=cache,target=/fancy-plugin-example/target,id=fancy-target \
+    rustup target add wasm32-unknown-unknown \
  && cargo build --release -p fancy-greeter-wasm --target wasm32-unknown-unknown \
  && wasm-tools component new \
       target/wasm32-unknown-unknown/release/fancy_greeter_wasm.wasm \
@@ -151,7 +185,8 @@ RUN rustup target add wasm32-unknown-unknown \
 # tic-tac-toe-js: JavaScript WASM component plugin built with jco componentize.
 # The --wit path in package.json resolves relative to the examples/ subdir back
 # to /mumble-server/3rdparty/mumble-plugin-host/wit (already staged above).
-RUN cd examples/tic-tac-toe-js \
+RUN --mount=type=cache,target=/root/.npm,id=fancy-npm \
+    cd examples/tic-tac-toe-js \
  && npm install \
  && npm run build \
  && cp tic-tac-toe.wasm /fancy-plugins/
@@ -164,7 +199,9 @@ RUN cd examples/quiz-py \
 # lights-out-go: Go WASM component plugin built with TinyGo (wasip2). build.py
 # assembles a combined WIT package (mumble interfaces + TinyGo's wasi-cli deps)
 # and runs the TinyGo build; the committed Go bindings live under libraries/go.
-RUN cd examples/lights-out-go \
+RUN --mount=type=cache,target=/root/.cache/go-build,id=fancy-go-build \
+    --mount=type=cache,target=/root/go/pkg/mod,id=fancy-go-mod \
+    cd examples/lights-out-go \
  && python3 build.py \
  && cp lights-out.wasm /fancy-plugins/
 
@@ -210,13 +247,14 @@ RUN git submodule update --init && git submodule update --depth 1
 
 # Drop the prebuilt mumble-plugin-host artefacts where CMake expects them so
 # the C++ link step can resolve the cdylib symbols.
-COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so \
+COPY --from=plugin-host-build /plugin-host/out/libmumble_plugin_host.so \
     /mumble/repo/3rdparty/mumble-plugin-host/lib/libmumble_plugin_host.so
 COPY --from=plugin-host-build /plugin-host/host/include/mumble_plugin_host.h \
     /mumble/repo/3rdparty/mumble-plugin-host/include/mumble_plugin_host.h
 
 # Build with RelWithDebInfo for debug symbols + optimizations.
 RUN --mount=type=cache,target=/root/.ccache,id=mumble-ccache-debug \
+    --mount=type=cache,target=/mumble/repo/build-debug,id=mumble-cmake-build-debug \
     cd /mumble/repo && \
     mkdir -p build-debug && cd build-debug && \
     cmake -G Ninja \
@@ -254,10 +292,10 @@ COPY --from=build /mumble/mumble-server /usr/bin/mumble-server
 # FCM push module is optional - only copied if built.
 COPY --from=build /mumble/libmumble_push_fcm.so* /usr/bin/
 # WebRTC SFU Rust module - built in the sfu-build stage.
-COPY --from=sfu-build /sfu/target/release/libwebrtc_sfu.so /usr/bin/
+COPY --from=sfu-build /sfu/out/libwebrtc_sfu.so /usr/bin/
 # Mumble plugin host Rust cdylib - built in the plugin-host-build stage.
 # Installed under the multiarch lib dir so the dynamic linker finds it via DT_NEEDED.
-COPY --from=plugin-host-build /plugin-host/target/release/libmumble_plugin_host.so \
+COPY --from=plugin-host-build /plugin-host/out/libmumble_plugin_host.so \
     /usr/lib/x86_64-linux-gnu/libmumble_plugin_host.so
 # Built-in dynamic plugins (file-server, live-doc) - loaded at runtime via
 # MUMBLE_PLUGIN_DIRS.  Operators may drop additional plugins into the mounted
