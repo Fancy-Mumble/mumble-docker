@@ -24,8 +24,11 @@ on:
 # Builds each platform group on a native runner in parallel, then merges the
 # per-platform digests into a single multi-arch manifest (when store or publish).
 # Platform mapping:
-#   linux/amd64              → ubuntu-latest        (native x86-64)
-#   linux/arm64,linux/arm/v7 → ubuntu-24.04-arm     (native ARM64; arm/v7 via fast QEMU on ARM)
+#   linux/amd64 → ubuntu-latest    (native x86-64)
+#   linux/arm64 → ubuntu-24.04-arm (native ARM64)
+# NB: 32-bit linux/arm/v7 (armhf) is intentionally not built - NodeSource's
+# Node 22 setup (needed by plugin-host-build for the MUI password page) only
+# ships amd64/arm64 packages and aborts on armhf. No deploy target needs it.
 jobs:
     build:
         strategy:
@@ -35,7 +38,7 @@ jobs:
                     - runner: ubuntu-latest
                       platforms: linux/amd64
                     - runner: ubuntu-24.04-arm
-                      platforms: linux/arm64,linux/arm/v7
+                      platforms: linux/arm64
         runs-on: ${{ matrix.runner }}
         steps:
             - name: Login to GitHub Container registry
