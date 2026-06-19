@@ -76,14 +76,20 @@ RUN cargo build --release \
       -p mumble-file-server \
       -p mumble-live-doc \
       -p mumble-link-preview \
+      -p mumble-calendar \
+      -p mumble-friends \
  && strip target/release/libmumble_plugin_host.so \
           target/release/libmumble_file_server.so \
           target/release/libmumble_live_doc.so \
           target/release/libmumble_link_preview.so \
+          target/release/libmumble_calendar.so \
+          target/release/libmumble_friends.so \
  && mkdir -p /plugin-host/plugins \
  && cp target/release/libmumble_file_server.so /plugin-host/plugins/ \
  && cp target/release/libmumble_live_doc.so   /plugin-host/plugins/ \
- && cp target/release/libmumble_link_preview.so /plugin-host/plugins/
+ && cp target/release/libmumble_link_preview.so /plugin-host/plugins/ \
+ && cp target/release/libmumble_calendar.so   /plugin-host/plugins/ \
+ && cp target/release/libmumble_friends.so    /plugin-host/plugins/
 
 
 # ------------------------------------------------------------------
@@ -168,7 +174,14 @@ WORKDIR /mumble/repo
 
 # Initialize submodules (needed for 3rdparty deps).
 # Cache the .git directory so repeated builds don't re-download submodules.
-RUN git submodule update --init && git submodule update --depth 1
+# Skip when the source is not a standalone git repo (e.g. a git *submodule*
+# checkout like the e2e harness' vendor/server, whose .git is a dangling gitdir
+# pointer): there the submodules are already vendored in the copied tree.
+RUN if git rev-parse --git-dir >/dev/null 2>&1; then \
+        git submodule update --init && git submodule update --depth 1; \
+    else \
+        echo "Skipping submodule update: source is not a standalone git repo; using vendored submodules."; \
+    fi
 
 # Drop the prebuilt mumble-plugin-host artefacts where CMake expects them so
 # the C++ link step can resolve the cdylib symbols.

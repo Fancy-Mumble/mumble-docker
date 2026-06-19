@@ -42,6 +42,10 @@ except ImportError:
     from tools import _common as c
 
 DEFAULTS = {
+    # Default to "" so a shell-environment override is honoured even when the key
+    # is absent from .env (env_with_defaults only consults os.environ for keys it
+    # already knows). MUMBLE_SRC is still required at runtime.
+    "MUMBLE_SRC":        "",
     "MUMBLE_FUZZ_IMAGE": "mumble-fuzz",
     "MUMBLE_FUZZ_TAG":   "latest",
 }

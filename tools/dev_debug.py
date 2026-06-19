@@ -26,6 +26,12 @@ except ImportError:
     from tools import _common as c
 
 DEFAULTS = {
+    # Source paths default to "" so a shell-environment override is honoured even
+    # when the key is absent from .env -- env_with_defaults only consults
+    # os.environ for keys it already knows (from DEFAULTS or .env). MUMBLE_SRC is
+    # still required at runtime; the empty default just makes it overridable.
+    "MUMBLE_SRC":               "",
+    "MUMBLE_FANCY_PLUGINS_SRC": "",
     "MUMBLE_IMAGE":           "mumble-server",
     "MUMBLE_TAG":             "debug",
     "MUMBLE_CONTAINER":       "mumble-server-debug",

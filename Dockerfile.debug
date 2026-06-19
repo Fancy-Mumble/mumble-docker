@@ -243,7 +243,16 @@ RUN apt-get -o Acquire::Check-Date=false update && apt-get install --no-install-
 COPY --from=mumble-src . /mumble/repo
 WORKDIR /mumble/repo
 
-RUN git submodule update --init && git submodule update --depth 1
+# Update submodules only when the source is a usable standalone git repo. When
+# MUMBLE_SRC is itself a git *submodule* checkout (e.g. the e2e harness'
+# vendor/server), its .git is a dangling gitdir pointer and the submodules are
+# already vendored in the copied tree, so an in-container update would fail with
+# "not a git repository". In that case we rely on the vendored submodules.
+RUN if git rev-parse --git-dir >/dev/null 2>&1; then \
+        git submodule update --init && git submodule update --depth 1; \
+    else \
+        echo "Skipping submodule update: source is not a standalone git repo; using vendored submodules."; \
+    fi
 
 # Drop the prebuilt mumble-plugin-host artefacts where CMake expects them so
 # the C++ link step can resolve the cdylib symbols.
