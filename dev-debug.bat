@@ -122,7 +122,7 @@ for /f "tokens=*" %%C in ('docker ps -q --filter "publish=64738"') do (
 )
 
 echo.
-echo === Launching GDB (batch mode — will print stacktrace on crash) ===
+echo === Launching GDB (batch mode - will print stacktrace on crash) ===
 echo.
 
 docker run --rm ^

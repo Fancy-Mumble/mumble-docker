@@ -5,8 +5,8 @@ REM
 REM Usage: dev-build.bat [--clean]
 REM   --clean   Prune the BuildKit CMake cache (full rebuild)
 REM
-REM See also: export-db.bat  — export the live database to a local file
-REM           import-db.bat  — import a local database file into the container
+REM See also: export-db.bat  - export the live database to a local file
+REM           import-db.bat  - import a local database file into the container
 
 setlocal
 
